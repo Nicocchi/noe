@@ -5,8 +5,8 @@ import "platform"
 
 main :: proc() {
 	window: platform.Window
-	if !platform.window_create(&window, 1280, 720, "Runic") {
-		fmt.eprintln("failed to create window")
+	if !platform.window_create(&window, 1280, 720, "Nico's Own Editor") {
+		fmt.eprintln("Failed to create window")
 		return
 	}
 	defer platform.window_destroy(&window)

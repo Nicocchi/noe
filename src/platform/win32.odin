@@ -3,8 +3,7 @@ package platform
 import "base:runtime"
 import win "core:sys/windows"
 
-APP_NAME :: "Editor"
-CLASS_NAME :: "EditorWindowClass"
+CLASS_NAME :: "NoeWindowClass"
 
 Window :: struct {
 	hwnd: win.HWND,
@@ -22,6 +21,13 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 	window := (^Window)(uintptr(win.GetWindowLongPtrW(hwnd, win.GWLP_USERDATA)))
 
 	switch msg {
+		case win.WM_NCCREATE:
+		{
+			cs := (^win.CREATESTRUCTW)(uintptr(lparam))
+			win.SetWindowLongPtrW(hwnd, win.GWLP_USERDATA, win.LONG_PTR(uintptr(cs.lpCreateParams)))
+			return win.DefWindowProcW(hwnd, msg, wparam, lparam)
+		}
+
 		case win.WM_CLOSE:
 		{
 			if window != nil {
@@ -34,13 +40,6 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 		{
 			win.PostQuitMessage(0)
 			return 0
-		}
-
-		case win.WM_NCCREATE:
-		{
-			cs := (^win.CREATESTRUCTW)(uintptr(lparam))
-			win.SetWindowLongPtrW(hwnd, win.GWLP_USERDATA, win.LONG_PTR(uintptr(cs.lpCreateParams)))
-			return win.DefWindowProcW(hwnd, msg, wparam, lparam)
 		}
 	}
 
