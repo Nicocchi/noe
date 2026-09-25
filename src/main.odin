@@ -11,7 +11,17 @@ main :: proc() {
 	}
 	defer platform.window_destroy(&window)
 
+	if !platform.gl_context_create(&window) {
+		fmt.eprintln("Failed to create GL context")
+		return
+	}
+	defer platform.gl_context_destroy(&window)
+
+	platform.window_show(&window)
+
 	for !window.should_close {
 		platform.window_poll(&window)
+		platform.frame_begin(&window)
+		platform.frame_end(&window)
 	}
 }

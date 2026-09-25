@@ -2,17 +2,24 @@ package platform
 
 import "base:runtime"
 import win "core:sys/windows"
+import gl "vendor:OpenGL"
 
 CLASS_NAME :: "NoeWindowClass"
 
 Window :: struct {
-	hwnd: win.HWND,
-	width: i32,
-	height: i32,
-	should_close: bool
+	hwnd:			win.HWND,
+	hdc:			win.HDC,
+	hglrc:			win.HGLRC,
+	width:			i32,
+	height: 		i32,
+	should_close:	bool
 }
 
 g_ctx: runtime.Context
+wgl_create_context_attribs: win.CreateContextAttribsARBType
+
+GL_MAJOR :: 4
+GL_MINOR :: 6
 
 window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 								lparam: win.LPARAM) -> win.LRESULT {
@@ -78,8 +85,16 @@ window_create :: proc(w: ^Window, width, height: i32, title: string) -> bool {
 		return false
 	}
 
-	win.ShowWindow(w.hwnd, win.SW_SHOW)
+	w.hdc = win.GetDC(w.hwnd)
+	if w.hdc == nil {
+		return false
+	}
+
 	return true
+}
+
+window_show :: proc(w: ^Window) {
+	win.ShowWindow(w.hwnd, win.SW_SHOW)
 }
 
 window_poll :: proc(w: ^Window) {
@@ -91,8 +106,126 @@ window_poll :: proc(w: ^Window) {
 }
 
 window_destroy :: proc(w: ^Window) {
+	if w.hdc != nil {
+		win.ReleaseDC(w.hwnd, w.hdc)
+		w.hdc = nil
+	}
+
 	if w.hwnd != nil {
 		win.DestroyWindow(w.hwnd)
 		w.hwnd = nil
 	}
+}
+
+pixel_format_set :: proc(hdc: win.HDC) -> bool {
+	pfd := win.PIXELFORMATDESCRIPTOR {
+		nSize =			win.WORD(size_of(win.PIXELFORMATDESCRIPTOR)),
+		nVersion = 		1,
+		dwFlags = 		win.PFD_DRAW_TO_WINDOW | win.PFD_SUPPORT_OPENGL | win.PFD_DOUBLEBUFFER,
+		iPixelType = 	win.PFD_TYPE_RGBA,
+		cColorBits = 	32,
+		cDepthBits = 	24,
+		cStencilBits = 	8,
+	}
+
+	format := win.ChoosePixelFormat(hdc, &pfd)
+	if format == 0 {
+		return false
+	}
+
+	return win.SetPixelFormat(hdc, format, &pfd) == true
+}
+
+load_wgl_extensions :: proc() -> bool {
+	instance := win.HINSTANCE(win.GetModuleHandleW(nil))
+
+	dummy := win.CreateWindowExW(
+		0,
+		win.L(CLASS_NAME),
+		win.L("NOE Dummy"),
+		win.WS_OVERLAPPED,
+		0, 0, 1, 1,
+		nil, nil, instance, nil
+	)
+	if dummy == nil {
+		return false
+	}
+	defer win.DestroyWindow(dummy)
+
+	hdc := win.GetDC(dummy)
+	if hdc == nil {
+		return false
+	}
+	defer win.ReleaseDC(dummy, hdc)
+
+	if !pixel_format_set(hdc) {
+		return false
+	}
+
+	dummy_gl := win.wglCreateContext(hdc)
+
+	if win.wglMakeCurrent(hdc, dummy_gl) != true {
+		return false
+	}
+	defer win.wglMakeCurrent(nil, nil)
+
+	proc_ptr := win.wglGetProcAddress("wglCreateContextAttribsARB")
+	switch uintptr(proc_ptr) {
+		case 0, 1, 2, 3, ~uintptr(0):
+			return false
+	}
+
+	wgl_create_context_attribs = win.CreateContextAttribsARBType(proc_ptr)
+	return wgl_create_context_attribs != nil
+}
+
+gl_context_create :: proc(w: ^Window) -> bool {
+	if !load_wgl_extensions() || !pixel_format_set(w.hdc) {
+		return false
+	}
+
+	attribs := [?]win.c_int {
+		win.CONTEXT_MAJOR_VERSION_ARB, GL_MAJOR,
+		win.CONTEXT_MINOR_VERSION_ARB, GL_MINOR,
+		win.CONTEXT_PROFILE_MASK_ARB, win.CONTEXT_CORE_PROFILE_BIT_ARB,
+		0
+	}
+
+	w.hglrc = wgl_create_context_attribs(w.hdc, nil, raw_data(attribs[:]))
+	if w.hglrc == nil {
+		return false
+	}
+
+	if win.wglMakeCurrent(w.hdc, w.hglrc) != true {
+		win.wglDeleteContext(w.hglrc)
+		w.hglrc = nil
+		return false
+	}
+
+	gl.load_up_to(GL_MAJOR, GL_MINOR, win.gl_set_proc_address)
+
+	return true
+}
+
+gl_context_destroy :: proc(w: ^Window) {
+	if w.hglrc != nil {
+		win.wglMakeCurrent(nil, nil)
+		win.wglDeleteContext(w.hglrc)
+		w.hglrc = nil
+	}
+}
+
+frame_begin :: proc(w: ^Window) {
+	rect: win.RECT
+	win.GetClientRect(w.hwnd, &rect)
+	w.width = rect.right - rect.left
+	w.height = rect.bottom - rect.top
+
+	gl.Viewport(0, 0, w.width, w.height)
+	gl.ClearColor(0.15, 0.16, 0.20, 1.0)
+	gl.Clear(gl.COLOR_BUFFER_BIT)
+}
+
+frame_end :: proc(w: ^Window) {
+	win.SwapBuffers(w.hdc)
 }
