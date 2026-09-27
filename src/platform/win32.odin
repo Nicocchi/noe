@@ -7,12 +7,17 @@ import gl "vendor:OpenGL"
 CLASS_NAME :: "NoeWindowClass"
 
 Window :: struct {
-	hwnd:			win.HWND,
-	hdc:			win.HDC,
-	hglrc:			win.HGLRC,
-	width:			i32,
-	height: 		i32,
-	should_close:	bool
+	hwnd:				win.HWND,
+	hdc:				win.HDC,
+	hglrc:				win.HGLRC,
+	width:				i32,
+	height: 			i32,
+	should_close:		bool,
+	events:				[EVENT_CAP]Event,
+	event_count:		int,
+	ime_composing: 		bool,
+	ime_preview: 		[256]u8,
+	ime_preview_len: 	int
 }
 
 g_ctx: runtime.Context
@@ -47,6 +52,117 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 		{
 			win.PostQuitMessage(0)
 			return 0
+		}
+
+		case win.WM_CHAR:
+		{
+			if window == nil {
+				return 0
+			}
+
+			if window.ime_composing {
+				return 0
+			}
+
+			ch := rune(wparam)
+			if ch >= 32 && ch != 127 {
+				event_push(window, Text_Event{ch})
+			}
+			return 0
+		}
+
+		case win.WM_KEYDOWN:
+		{
+			if window == nil {
+				return 0
+			}
+
+			if window.ime_composing {
+				switch wparam {
+					case win.VK_BACK, win.VK_LEFT, win.VK_RIGHT, win.VK_RETURN, win.VK_UP, win.VK_DOWN:
+					{
+						return win.DefWindowProcW(hwnd, msg, wparam, lparam)
+					}
+				}
+			}
+
+			key: Key
+			switch wparam {
+				case win.VK_BACK:
+				{
+					key = .Backspace
+				}
+				case win.VK_LEFT:
+				{
+					key = .Left
+				}
+				case win.VK_RIGHT:
+				{
+					key = .Right
+				}
+				case win.VK_UP:
+				{
+					key = .Up
+				}
+				case win.VK_DOWN:
+				{
+					key = .Down
+				}
+				case win.VK_RETURN:
+				{
+					key = .Enter
+				}
+				case:
+				{
+					return win.DefWindowProcW(hwnd, msg, wparam, lparam)
+				}
+			}
+			event_push(window, Key_Event{key})
+			return 0
+		}
+		case win.WM_IME_STARTCOMPOSITION:
+		{
+			if window != nil {
+				window.ime_composing = true
+				ime_clear_preview(window)
+			}
+			return 0
+		}
+		case win.WM_IME_ENDCOMPOSITION:
+		{
+			if window != nil {
+				window.ime_composing = false
+				ime_clear_preview(window)
+			}
+			return 0
+		}
+		case win.WM_IME_COMPOSITION:
+		{
+			if window == nil {
+				return 0
+			}
+			himc := ImmGetContext(hwnd)
+			if himc != nil {
+				if lparam & GCS_RESULTSTR != 0 {
+					ev: IME_Commit_Event
+					ev.len = ime_read_utf8(himc, GCS_RESULTSTR, ev.text[:])
+					if ev.len > 0 {
+						event_push(window, ev)
+					}
+					ime_clear_preview(window)
+				}
+				if lparam & GCS_COMPSTR != 0 {
+					window.ime_preview_len = ime_read_utf8(himc, GCS_COMPSTR, window.ime_preview[:])
+				}
+				ImmReleaseContext(hwnd, himc)
+			}
+			return 0
+		}
+		case win.WM_IME_SETCONTEXT:
+		{
+			lp := lparam
+			lp &= ~win.LPARAM(ISC_SHOWUICOMPOSITIONWINDOW)
+			return win.DefWindowProcW(hwnd, msg, wparam, lp)
 		}
 	}
 
@@ -213,19 +329,4 @@ gl_context_destroy :: proc(w: ^Window) {
 		win.wglDeleteContext(w.hglrc)
 		w.hglrc = nil
 	}
-}
-
-frame_begin :: proc(w: ^Window) {
-	rect: win.RECT
-	win.GetClientRect(w.hwnd, &rect)
-	w.width = rect.right - rect.left
-	w.height = rect.bottom - rect.top
-
-	gl.Viewport(0, 0, w.width, w.height)
-	gl.ClearColor(0.15, 0.16, 0.20, 1.0)
-	gl.Clear(gl.COLOR_BUFFER_BIT)
-}
-
-frame_end :: proc(w: ^Window) {
-	win.SwapBuffers(w.hdc)
 }
