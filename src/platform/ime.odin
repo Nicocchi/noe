@@ -35,7 +35,8 @@ ime_read_utf8 :: proc(himc: HIMC, what: win.DWORD, dst: []u8) -> int {
     wbuf: [256]u16
     n := min(wlen, len(wbuf))
     ImmGetCompositionStringW(himc, what, raw_data(wbuf[:]), win.DWORD(n * 2))
-    s, _ := win.utf16_to_utf8(wbuf[:n])
+    s, _ := win.utf16_to_utf8(wbuf[:n], context.allocator)
+    defer delete(s)
     n_out := min(len(s), len(dst))
     copy(dst, s[:n_out])
     return n_out

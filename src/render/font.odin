@@ -2,6 +2,7 @@ package render
 
 import "core:os"
 import tt "vendor:stb/truetype"
+import "core:unicode/utf8"
 
 PIXEL_HEIGHT    :: 22
 PAD             :: 1
@@ -206,4 +207,25 @@ font_glyph :: proc(r: rune) -> Glyph {
 
     the_font.glyphs[r] = g
     return g
+}
+
+font_index_at :: proc(s: string, x: f32) -> int {
+    if x <= 0 {
+        return 0
+    }
+    pen: f32
+    i := 0
+    for i < len(s) {
+        r, n := utf8.decode_rune(s[i:])
+        if n <= 0 || r == '\n' || r == '\r' {
+            break
+        }
+        adv := font_glyph(r).xadvance
+        if x < pen + adv * 0.5 {
+            return i
+        }
+        pen += adv
+        i += n
+    }
+    return len(s)
 }

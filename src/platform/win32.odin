@@ -175,6 +175,53 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 			lp &= ~win.LPARAM(ISC_SHOWUICOMPOSITIONWINDOW)
 			return win.DefWindowProcW(hwnd, msg, wparam, lp)
 		}
+		case win.WM_LBUTTONDOWN:
+		{
+			if window == nil || window.ime_composing {
+				return 0
+			}
+
+			win.SetCapture(hwnd)
+			x := f32(win.GET_X_LPARAM(lparam))
+			y := f32(win.GET_Y_LPARAM(lparam))
+			event_push(window, Mouse_Event{x, y, .Left, .Down})
+			return 0
+		}
+		case win.WM_LBUTTONUP:
+		{
+			if window == nil {
+				return 0
+			}
+
+			if win.GetCapture() == hwnd {
+				win.ReleaseCapture()
+			}
+
+			x := f32(win.GET_X_LPARAM(lparam))
+			y := f32(win.GET_Y_LPARAM(lparam))
+			event_push(window, Mouse_Event{x, y, .Left, .Up})
+			return 0
+		}
+		case win.WM_MOUSEMOVE:
+		{
+			if window == nil || window.ime_composing || (wparam & win.MK_LBUTTON == 0) {
+				return 0
+			}
+
+			x := f32(win.GET_X_LPARAM(lparam))
+			y := f32(win.GET_Y_LPARAM(lparam))
+			event_push(window, Mouse_Event{x, y, .Left, .Move})
+			return 0
+		}
+		case win.WM_MOUSEWHEEL:
+		{
+			if window == nil || window.ime_composing {
+				return 0
+			}
+			d := f32(win.GET_WHEEL_DELTA_WPARAM(wparam)) / f32(win.WHEEL_DELTA)
+			event_push(window, Scroll_Event{d})
+			return 0
+		}
 	}
 
 	return win.DefWindowProcW(hwnd, msg, wparam, lparam)
@@ -197,8 +244,6 @@ window_create :: proc(w: ^Window, width, height: i32, title: string) -> bool {
 		return false
 	}
 
-	w.width, w.height = width, height
-
 	w.hwnd = win.CreateWindowExW(
 		0,
 		win.L(CLASS_NAME),
@@ -214,8 +259,15 @@ window_create :: proc(w: ^Window, width, height: i32, title: string) -> bool {
 
 	w.hdc = win.GetDC(w.hwnd)
 	if w.hdc == nil {
+		win.DestroyWindow(w.hwnd)
+		w.hwnd = nil
 		return false
 	}
+
+	rect: win.RECT
+	win.GetClientRect(w.hwnd, &rect)
+	w.width = rect.right - rect.left
+	w.height = rect.bottom - rect.top
 
 	return true
 }
@@ -290,7 +342,10 @@ load_wgl_extensions :: proc() -> bool {
 	}
 
 	dummy_gl := win.wglCreateContext(hdc)
-
+	if dummy_gl == nil {
+		return false
+	}
+	defer win.wglDeleteContext(dummy_gl)
 	if win.wglMakeCurrent(hdc, dummy_gl) != true {
 		return false
 	}

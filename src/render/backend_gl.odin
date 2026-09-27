@@ -77,6 +77,8 @@ gl_init :: proc(w: ^platform.Window) -> bool {
     ok: bool
     gls.program, ok = gl.load_shaders_source(GL_VS, GL_FS)
     if !ok {
+        delete(gls.instances)
+        gls = {}
         return false
     }
     gls.u_screen = gl.GetUniformLocation(gls.program, "u_screen")
@@ -122,6 +124,7 @@ gl_init :: proc(w: ^platform.Window) -> bool {
 
     gls.atlas = gl_texture_create(ATLAS_SIZE, ATLAS_SIZE, .R8)
     if !font_init() {
+        gl_shutdown()
         return false
     }
     pixels := make([]u8, ATLAS_SIZE * ATLAS_SIZE)

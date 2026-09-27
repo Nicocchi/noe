@@ -1,6 +1,5 @@
 package editor
 
-import "core:sync"
 import "core:unicode"
 import "core:unicode/utf8"
 import "../text"
@@ -41,12 +40,13 @@ is_word :: proc(r: rune) -> bool {
 }
 
 insert_text :: proc(ed: ^Editor, s: string) {
-    if len(s) == 0 {
-        return
-    }
-    text.buffer_insert(&ed.doc, ed.cursor, s)
-    ed.cursor += len(s)
-    ed.desired_col = sync_col(ed)
+	if len(s) == 0 {
+		return
+	}
+
+	_ = delete_selection(ed)
+	text.buffer_insert(&ed.doc, ed.cursor, s)
+	set_cursor(ed, ed.cursor + len(s), false)
 }
 
 insert_rune :: proc(ed: ^Editor, r: rune) {
@@ -54,74 +54,82 @@ insert_rune :: proc(ed: ^Editor, r: rune) {
     insert_text(ed, string(bytes[:n]))
 }
 
-cmd_cursor_left :: proc(ed: ^Editor) {
-    start, _ := text.buffer_prev_rune(&ed.doc, ed.cursor)
-    ed.cursor = start
-    ed.desired_col = sync_col(ed)
+delete_selection :: proc(ed: ^Editor) -> bool {
+    if !has_selection(ed) {
+        return false
+    }
+    lo, hi := selection_range(ed)
+    text.buffer_delete(&ed.doc, lo, hi - lo)
+    set_cursor(ed, lo, false)
+    return true
 }
 
+cmd_cursor_left :: proc(ed: ^Editor) {
+	if has_selection(ed) {
+		lo, _ := selection_range(ed)
+		set_cursor(ed, lo, false)
+		return
+	}
+	start, _ := text.buffer_prev_rune(&ed.doc, ed.cursor)
+	set_cursor(ed, start, false)
+}
 cmd_cursor_right :: proc(ed: ^Editor) {
-    end, _ := text.buffer_next_rune(&ed.doc, ed.cursor)
-    ed.cursor = end
-    ed.desired_col = sync_col(ed)
+	if has_selection(ed) {
+		_, hi := selection_range(ed)
+		set_cursor(ed, hi, false)
+		return
+	}
+	end, _ := text.buffer_next_rune(&ed.doc, ed.cursor)
+	set_cursor(ed, end, false)
 }
 
 cmd_cursor_up :: proc(ed: ^Editor) {
-    line := text.buffer_line_at(&ed.doc, ed.cursor)
-    if line > 0 {
-        ed.cursor = text.buffer_pos_at_line(&ed.doc, line - 1, ed.desired_col)
-    }
+	col := ed.desired_col
+	line := text.buffer_line_at(&ed.doc, ed.cursor)
+	pos := ed.cursor
+	if line > 0 {
+		pos = text.buffer_pos_at_line(&ed.doc, line - 1, col)
+	}
+	set_cursor(ed, pos, false)
+	ed.desired_col = col
 }
-
 cmd_cursor_down :: proc(ed: ^Editor) {
-    line := text.buffer_line_at(&ed.doc, ed.cursor)
-    if line + 1 < text.buffer_line_count(&ed.doc) {
-        ed.cursor = text.buffer_pos_at_line(&ed.doc, line + 1, ed.desired_col)
-    }
-}
-
-cmd_delete_backward :: proc(ed: ^Editor) {
-    if ed.cursor <= 0 {
-        return
-    }
-
-    start, size := text.buffer_prev_rune(&ed.doc, ed.cursor)
-    text.buffer_delete(&ed.doc, start, size)
-    ed.cursor = start
-    ed.desired_col = sync_col(ed)
-}
-
-cmd_insert_newline :: proc(ed: ^Editor) {
-    insert_text(ed, "\n")
+	col := ed.desired_col
+	line := text.buffer_line_at(&ed.doc, ed.cursor)
+	pos := ed.cursor
+	if line + 1 < text.buffer_line_count(&ed.doc) {
+		pos = text.buffer_pos_at_line(&ed.doc, line + 1, col)
+	}
+	set_cursor(ed, pos, false)
+	ed.desired_col = col
 }
 
 cmd_cursor_word_left :: proc(ed: ^Editor) {
     pos := ed.cursor
-    if pos == 0 {
-        return
-    }
-    pos, _ = text.buffer_prev_rune(&ed.doc, pos)
-
-    for pos > 0 {
-        r, _ := text.buffer_peek_rune(&ed.doc, pos)
-        if unicode.is_space(r) {
-            pos, _ = text.buffer_prev_rune(&ed.doc, pos)
-            continue
+    
+    if pos > 0 {
+        pos, _ = text.buffer_prev_rune(&ed.doc, pos)
+        
+        for pos > 0 {
+            r, _ := text.buffer_peek_rune(&ed.doc, pos)
+            if unicode.is_space(r) {
+                pos, _ = text.buffer_prev_rune(&ed.doc, pos)
+                continue
+            }
+            break
         }
-        break
-    }
 
-    for pos > 0 {
-        start, _ := text.buffer_prev_rune(&ed.doc, pos)
-        r, _ := text.buffer_peek_rune(&ed.doc, start)
-        if is_word(r) {
-            pos = start
-            continue
+        for pos > 0 {
+            start, _ := text.buffer_prev_rune(&ed.doc, pos)
+            r, _ := text.buffer_peek_rune(&ed.doc, start)
+            if is_word(r) {
+                pos = start
+                continue
+            }
+            break
         }
-        break
     }
-    ed.cursor = pos
-    ed.desired_col = sync_col(ed)
+    set_cursor(ed, pos, false)
 }
 
 cmd_cursor_word_right :: proc(ed: ^Editor) {
@@ -150,6 +158,19 @@ cmd_cursor_word_right :: proc(ed: ^Editor) {
         }
         break
     }
-    ed.cursor = pos
-    ed.desired_col = sync_col(ed)
+    set_cursor(ed, pos, false)
+}
+
+cmd_delete_backward :: proc(ed: ^Editor) {
+    if delete_selection(ed) || ed.cursor <= 0 {
+        return
+    }
+
+    start, size := text.buffer_prev_rune(&ed.doc, ed.cursor)
+    text.buffer_delete(&ed.doc, start, size)
+    set_cursor(ed, start, false)
+}
+
+cmd_insert_newline :: proc(ed: ^Editor) {
+    insert_text(ed, "\n")
 }

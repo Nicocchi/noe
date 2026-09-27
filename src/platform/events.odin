@@ -34,10 +34,34 @@ IME_Commit_Event :: struct {
     len:    int
 }
 
+Mouse_Button :: enum {
+    Left,
+    Right,
+    Middle
+}
+
+Mouse_Action :: enum {
+    Down,
+    Up,
+    Move
+}
+
+Mouse_Event :: struct {
+    x, y:   f32,
+    button: Mouse_Button,
+    action: Mouse_Action
+}
+
+Scroll_Event :: struct {
+    notches: f32
+}
+
 Event :: union {
     Text_Event,
     Key_Event,
-    IME_Commit_Event
+    IME_Commit_Event,
+    Mouse_Event,
+    Scroll_Event
 }
 
 event_push :: proc(w: ^Window, ev: Event) {

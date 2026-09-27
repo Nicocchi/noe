@@ -216,11 +216,27 @@ buffer_line_col :: proc(b: ^Buffer, pos: int) -> (line, col: int) {
     return
 }
 
+buffer_byte :: proc(b: ^Buffer, pos: int) -> u8 {
+    if pos < 0 || pos >= buffer_len(b) {
+        return 0
+    }
+    if pos < b.gap_start {
+        return b.data[pos]
+    }
+    return b.data[pos + (b.gap_end - b.gap_start)]
+}
+
 buffer_pos_at_line :: proc(b: ^Buffer, line, col: int) -> int {
-    line := clamp(line, 0, buffer_line_count(b) - 1)
-    start := buffer_line_start(b, line)
-    end := buffer_line_end(b, line)
-    return start + clamp(col, 0, end - start)
+	line := clamp(line, 0, buffer_line_count(b) - 1)
+	start := buffer_line_start(b, line)
+	end := buffer_line_end(b, line)
+	pos := start + clamp(col, 0, end - start)
+	if pos < end {
+		for pos > start && buffer_byte(b, pos) & 0xC0 == 0x80 {
+			pos -= 1
+		}
+	}
+	return pos
 }
 
 buffer_peek_rune :: proc(b: ^Buffer, pos: int) -> (r: rune, size: int) {
