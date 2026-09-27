@@ -16,8 +16,17 @@ Text_Event :: struct {
     ch: rune
 }
 
+Mod :: enum {
+    Ctrl,
+    Shift,
+    Alt
+}
+
+Mods :: bit_set[Mod]
+
 Key_Event :: struct {
-    key: Key
+    key: Key,
+    mods: Mods
 }
 
 IME_Commit_Event :: struct {

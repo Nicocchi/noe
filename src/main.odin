@@ -6,13 +6,9 @@ import "core:unicode/utf8"
 import "platform"
 import "render"
 import "text"
+import "editor"
 
 bc :: 35.0 / 255.0
-
-sync_col :: proc(doc: ^text.Buffer, cursor: int) -> int {
-	line := text.buffer_line_at(doc, cursor)
-	return cursor - text.buffer_line_start(doc, line)
-}
 
 main :: proc() {
 	window: platform.Window
@@ -41,12 +37,14 @@ main :: proc() {
 	render.queue_init(&queue, 1 << 20) // 1 MB
 	defer render.queue_destroy(&queue)
 
-	doc: text.Buffer
-	text.buffer_init(&doc, 4096)
-	defer text.buffer_destroy(&doc)
-	text.buffer_insert(&doc, 0, "Nico")
-	cursor := text.buffer_len(&doc)
-	desired_col := cursor - text.buffer_line_start(&doc, text.buffer_line_at(&doc, cursor))
+	editor.register_default_commands()
+	editor.bind_default_keys()
+	defer delete(editor.commands)
+	defer delete(editor.keymap)
+
+	ed: editor.Editor
+	editor.editor_init(&ed, "Nico")
+	defer editor.editor_destroy(&ed)
 
 	for !window.should_close {
 		platform.window_poll(&window)
@@ -56,66 +54,16 @@ main :: proc() {
 				case platform.IME_Commit_Event:
 				{
 					commit := ev
-					s := string(commit.text[:commit.len])
-					text.buffer_insert(&doc, cursor, s)
-					cursor += commit.len
-					desired_col = sync_col(&doc, cursor)
+					editor.insert_text(&ed, string(commit.text[:commit.len]))
 				}
 				case platform.Text_Event:
 				{
-					bytes, n := utf8.encode_rune(ev.ch)
-					text.buffer_insert(&doc, cursor, string(bytes[:n]))
-					cursor += n
-					desired_col = sync_col(&doc, cursor)
+					editor.insert_rune(&ed, ev.ch)
 				}
 				case platform.Key_Event:
 				{
-					switch ev.key {
-						case .Backspace:
-						{
-							if cursor > 0 {
-								start, size := text.buffer_prev_rune(&doc, cursor)
-								text.buffer_delete(&doc, start, size)
-								cursor = start
-								desired_col = sync_col(&doc, cursor)
-							}
-						}
-						case .Left:
-						{
-							start, _ := text.buffer_prev_rune(&doc, cursor)
-							cursor = start
-							desired_col = sync_col(&doc, cursor)
-						}
-						case .Right:
-						{
-							end, _ := text.buffer_next_rune(&doc, cursor)
-							cursor = end
-							desired_col = sync_col(&doc, cursor)
-						}
-						case .Up:
-						{
-							line := text.buffer_line_at(&doc, cursor)
-							if line > 0 {
-								cursor = text.buffer_pos_at_line(&doc, line - 1, desired_col)
-							}
-						}
-						case .Down:
-						{
-							line := text.buffer_line_at(&doc, cursor)
-							if line + 1 < text.buffer_line_count(&doc) {
-								cursor = text.buffer_pos_at_line(&doc, line + 1, desired_col)
-							}
-						}
-						case .Enter:
-						{
-							text.buffer_insert(&doc, cursor, "\n")
-							cursor += 1
-							desired_col = sync_col(&doc, cursor)
-						}
-						case .Unknown:
-						{
-							
-						}
+					if name, ok := editor.lookup_key(ev.key, ev.mods); ok {
+						editor.run_command(&ed, name)
 					}
 				}
 			}
@@ -127,17 +75,17 @@ main :: proc() {
 
 		lh := render.font_line_height()
 		baseline0 := 64 + render.the_font.ascent
-		for i in 0 ..< text.buffer_line_count(&doc) {
-			line := text.buffer_line_clone(&doc, i)
+		for i in 0 ..< text.buffer_line_count(&ed.doc) {
+			line := text.buffer_line_clone(&ed.doc, i)
 			defer delete(line)
 			render.push_text(&queue, line, 32, baseline0 + f32(i) * lh, {0.90, 0.90, 0.90, 1.0})
 			
 		}
-		line_i := text.buffer_line_at(&doc, cursor)
-		line_start := text.buffer_line_start(&doc, line_i)
-		prefix := text.buffer_line_clone(&doc, line_i)
+		line_i := text.buffer_line_at(&ed.doc, ed.cursor)
+		line_start := text.buffer_line_start(&ed.doc, line_i)
+		prefix := text.buffer_line_clone(&ed.doc, line_i)
 		defer delete(prefix)
-		prefix = prefix[:min(cursor - line_start, len(prefix))]
+		prefix = prefix[:min(ed.cursor - line_start, len(prefix))]
 
 		cx := 32 + render.font_width(prefix)
 		cy := baseline0 + f32(line_i) * lh - render.font_ascent()

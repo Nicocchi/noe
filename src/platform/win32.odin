@@ -77,6 +77,17 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 				return 0
 			}
 
+			mods: Mods
+			if u16(win.GetKeyState(win.VK_CONTROL)) & 0x8000 != 0 {
+				mods += {.Ctrl}
+			}
+			if u16(win.GetKeyState(win.VK_SHIFT)) & 0x8000 != 0 {
+				mods += {.Shift}
+			}
+			if u16(win.GetKeyState(win.VK_MENU)) & 0x8000 != 0 {
+				mods += {.Alt}
+			}
+
 			if window.ime_composing {
 				switch wparam {
 					case win.VK_BACK, win.VK_LEFT, win.VK_RIGHT, win.VK_RETURN, win.VK_UP, win.VK_DOWN:
@@ -117,7 +128,7 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 					return win.DefWindowProcW(hwnd, msg, wparam, lparam)
 				}
 			}
-			event_push(window, Key_Event{key})
+			event_push(window, Key_Event{key, mods})
 			return 0
 		}
 		case win.WM_IME_STARTCOMPOSITION:

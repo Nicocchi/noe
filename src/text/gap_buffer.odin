@@ -222,3 +222,14 @@ buffer_pos_at_line :: proc(b: ^Buffer, line, col: int) -> int {
     end := buffer_line_end(b, line)
     return start + clamp(col, 0, end - start)
 }
+
+buffer_peek_rune :: proc(b: ^Buffer, pos: int) -> (r: rune, size: int) {
+    pos := clamp(pos, 0, buffer_len(b))
+    if pos >= buffer_len(b) {
+        return 0, 0
+    }
+    n := min(4, buffer_len(b) - pos)
+    buf: [4]u8
+    buffer_read(b, pos, n, buf[:n])
+    return utf8.decode_rune(buf[:n])
+}
