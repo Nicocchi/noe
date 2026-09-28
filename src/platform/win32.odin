@@ -123,6 +123,14 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 				{
 					key = .Enter
 				}
+				case 'Z':
+				{
+					key = .Z
+				}
+				case 'Y':
+				{
+					key = .Y
+				}
 				case:
 				{
 					return win.DefWindowProcW(hwnd, msg, wparam, lparam)

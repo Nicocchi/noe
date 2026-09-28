@@ -9,7 +9,9 @@ Key :: enum {
     Right,
     Up,
     Down,
-    Enter
+    Enter,
+    Z,
+    Y
 }
 
 Text_Event :: struct {

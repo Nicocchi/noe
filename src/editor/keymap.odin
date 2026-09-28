@@ -39,4 +39,7 @@ bind_default_keys :: proc() {
 	bind_key(.Enter,     "insert_newline")
     bind_chord({.Ctrl}, .Left,  "cursor_word_left")
 	bind_chord({.Ctrl}, .Right, "cursor_word_right")
+    bind_chord({.Ctrl}, .Z, "undo")
+    bind_chord({.Ctrl}, .Y, "redo")
+    bind_chord({.Ctrl, .Shift}, .Z, "redo")
 }

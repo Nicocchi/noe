@@ -160,6 +160,14 @@ buffer_read :: proc(b: ^Buffer, pos, n: int, dst: []u8) -> int {
     return written
 }
 
+buffer_clone_range :: proc(b: ^Buffer, pos, n: int, allocator := context.allocator) -> string {
+    pos := clamp(pos, 0, buffer_len(b))
+    n := min(n, buffer_len(b) - pos)
+    out := make([]u8, n, allocator)
+    buffer_read(b, pos, n, out)
+    return string(out)
+}
+
 buffer_line_clone :: proc(b: ^Buffer, i: int, allocator := context.allocator) -> string {
     start := buffer_line_start(b, i)
     end := buffer_line_end(b, i)

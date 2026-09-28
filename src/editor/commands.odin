@@ -33,6 +33,8 @@ register_default_commands :: proc() {
 	register_command("insert_newline",     cmd_insert_newline)
     register_command("cursor_word_left",     cmd_cursor_word_left)
     register_command("cursor_word_right",     cmd_cursor_word_right)
+    register_command("undo", cmd_undo)
+    register_command("redo", cmd_redo)
 }
 
 is_word :: proc(r: rune) -> bool {
@@ -45,8 +47,10 @@ insert_text :: proc(ed: ^Editor, s: string) {
 	}
 
 	_ = delete_selection(ed)
-	text.buffer_insert(&ed.doc, ed.cursor, s)
-	set_cursor(ed, ed.cursor + len(s), false)
+    pos := ed.cursor
+	text.buffer_insert(&ed.doc, pos, s)
+    undo_record_insert(ed, pos, s)
+	set_cursor(ed, pos + len(s), false)
 }
 
 insert_rune :: proc(ed: ^Editor, r: rune) {
@@ -59,7 +63,9 @@ delete_selection :: proc(ed: ^Editor) -> bool {
         return false
     }
     lo, hi := selection_range(ed)
+    s := text.buffer_clone_range(&ed.doc, lo, hi - lo)
     text.buffer_delete(&ed.doc, lo, hi - lo)
+    undo_record_delete(ed, lo, s)
     set_cursor(ed, lo, false)
     return true
 }
@@ -167,7 +173,9 @@ cmd_delete_backward :: proc(ed: ^Editor) {
     }
 
     start, size := text.buffer_prev_rune(&ed.doc, ed.cursor)
+    s := text.buffer_clone_range(&ed.doc, start, size)
     text.buffer_delete(&ed.doc, start, size)
+    undo_record_delete(ed, start, s)
     set_cursor(ed, start, false)
 }
 

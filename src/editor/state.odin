@@ -2,12 +2,26 @@ package editor
 
 import "../text"
 
+Undo_Kind :: enum {
+    Insert,
+    Delete
+}
+
+Undo_Op :: struct {
+    kind: Undo_Kind,
+    pos: int,
+    text: string
+}
+
 Editor :: struct {
     doc:            text.Buffer,
     cursor:         int,
     sel_anchor:     int,
     desired_col:    int,
-    scroll_y:       f32
+    scroll_y:       f32,
+    undo:           [dynamic]Undo_Op,
+    undo_head:      int,
+    playing:        bool
 }
 
 editor_init :: proc(ed: ^Editor, starter: string) {
@@ -16,10 +30,16 @@ editor_init :: proc(ed: ^Editor, starter: string) {
     ed.cursor = text.buffer_len(&ed.doc)
     ed.sel_anchor = ed.cursor
     ed.desired_col = sync_col(ed)
+    ed.undo = make([dynamic]Undo_Op)
+    ed.undo_head = 0
 }
 
 editor_destroy :: proc(ed: ^Editor) {
     text.buffer_destroy(&ed.doc)
+    for op in ed.undo {
+        delete(op.text)
+    }
+    delete(ed.undo)
     ed^ = {}
 }
 
