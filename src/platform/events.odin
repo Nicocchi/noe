@@ -83,6 +83,8 @@ event_push :: proc(w: ^Window, ev: Event) {
         return
     }
 
+    w.needs_redraw = true
+
     w.events[w.event_count] = ev
     w.event_count += 1
 }

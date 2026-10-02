@@ -2,6 +2,7 @@ package editor
 
 import "core:os"
 import "core:strings"
+import "core:fmt"
 import "../text"
 import "../platform"
 
@@ -40,6 +41,8 @@ editor_load_path :: proc(ed: ^Editor, path: string) -> bool {
     editor_set_path(ed, path)
     set_cursor(ed, 0, false)
     ed.scroll_y = 0
+    ed.dirty = false
+    editor_update_title(ed)
     return true
 }
 
@@ -49,7 +52,12 @@ editor_save :: proc(ed: ^Editor) -> bool {
     }
     s := text.buffer_clone_string(&ed.doc)
     defer delete(s)
-    return os.write_entire_file(ed.path, s) == nil
+    if os.write_entire_file(ed.path, s) != nil {
+        return false
+    }
+    ed.dirty = false
+    editor_update_title(ed)
+    return true
 }
 
 editor_save_as :: proc(ed: ^Editor) -> bool {
@@ -60,6 +68,34 @@ editor_save_as :: proc(ed: ^Editor) -> bool {
     defer delete(path)
     editor_set_path(ed, path)
     return editor_save(ed)
+}
+
+editor_display_name :: proc(ed: ^Editor) -> string {
+    if len(ed.path) == 0 {
+        return "untitled"
+    }
+    i := len(ed.path) - 1
+    for i >= 0 && ed.path[i] != '/' && ed.path[i] != '\\' {
+        i -= 1
+    }
+    return ed.path[i + 1:]
+}
+
+editor_update_title :: proc(ed: ^Editor) {
+    star := ""
+    if ed.dirty {
+        star = " *"
+    }
+    title := fmt.tprintf("%s%s - NOE", editor_display_name(ed), star)
+    platform.window_set_title(ed.host, title)
+}
+
+editor_mark_dirty :: proc(ed: ^Editor) {
+    if ed.playing || ed.dirty {
+        return
+    }
+    ed.dirty = true
+    editor_update_title(ed)
 }
 
 cmd_file_open :: proc(ed: ^Editor) {

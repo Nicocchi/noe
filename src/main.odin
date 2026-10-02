@@ -1,6 +1,7 @@
 package main
 
 import "core:fmt"
+import "core:time"
 import "platform"
 import "render"
 import "text"
@@ -10,6 +11,7 @@ bc :: 35.0 / 255.0
 
 TEXT_X :: 32
 TEXT_Y :: 64
+BLINK_MS :: 530
 
 pos_at_xy :: proc(ed: ^editor.Editor, x, y: f32) -> int {
 	lh := render.font_line_height()
@@ -73,6 +75,10 @@ main :: proc() {
 	ed: editor.Editor
 	editor.editor_init(&ed, "")
 	ed.host = &window
+	editor.editor_update_title(&ed)
+	window.needs_redraw = true
+	last_input := time.tick_now()
+	caret_on := true
 	defer editor.editor_destroy(&ed)
 
 	for !window.should_close {
@@ -85,6 +91,7 @@ main :: proc() {
 		}
 
 		follow := false
+		had_events := window.event_count > 0
 		for i in 0 ..< window.event_count {
 			#partial switch ev in window.events[i] {
 				case platform.IME_Commit_Event:
@@ -135,76 +142,111 @@ main :: proc() {
 			}
 		}
 		platform.events_clear(&window)
+		
+		if had_events {
+			last_input = time.tick_now()
+			caret_on = true
+			window.needs_redraw = true
+		}
 
 		if follow {
 			lh := render.font_line_height()
 			editor.ensure_cursor_visible(&ed, f32(TEXT_Y), lh, f32(window.height), max_scroll_y(&ed, lh))
 		}
 
-		render.queue_reset(&queue)
-		render.push_clear(&queue, {bc, bc, bc, 1.0})
-
-		lh := render.font_line_height()
-		n_lines := text.buffer_line_count(&ed.doc)
-
-		first := 0
-		last := n_lines
-		if lh > 0 {
-			first = clamp(int((ed.scroll_y - f32(TEXT_Y)) / lh) - 1, 0, n_lines)
-			last = clamp(int((ed.scroll_y + f32(window.height)) / lh) + 1, 0, n_lines)
+		since := i64(time.duration_milliseconds(time.tick_since(last_input)))
+		on := true
+		if window.ime_preview_len == 0 && since >= BLINK_MS {
+			on = (since / BLINK_MS) % 2 == 0
+		}
+		if on != caret_on {
+			caret_on = on
+			window.needs_redraw = true
 		}
 
-		lo, hi := editor.selection_range(&ed)
-		if lo != hi {
-			sel := [4]f32{0.25, 0.40, 0.62, 1.0}
-			for i in first ..< last {
-				ls := text.buffer_line_start(&ed.doc, i)
-				le := text.buffer_line_end(&ed.doc, i)
-				if hi <= ls || lo > le {
-					continue
-				}
-				line := text.buffer_line_clone(&ed.doc, i)
-				defer delete(line)
-				a := clamp(lo - ls, 0, len(line))
-				b := clamp(hi - ls, 0, len(line))
-				x0 := f32(TEXT_X) + render.font_width(line[:a])
-				x1 := f32(TEXT_X) + render.font_width(line[:b])
-				if hi > le && lo <= le {
-					x1 += 8
-				}
-				y := line_top(&ed, i, lh)
-				if x1 > x0 {
-					render.push_quad(&queue, {x0, y}, {x1 - x0, lh}, sel)
+		if window.needs_redraw {
+			window.needs_redraw = false
+			
+			render.queue_reset(&queue)
+			render.push_clear(&queue, {bc, bc, bc, 1.0})
+	
+			lh := render.font_line_height()
+			n_lines := text.buffer_line_count(&ed.doc)
+	
+			first := 0
+			last := n_lines
+			if lh > 0 {
+				first = clamp(int((ed.scroll_y - f32(TEXT_Y)) / lh) - 1, 0, n_lines)
+				last = clamp(int((ed.scroll_y + f32(window.height)) / lh) + 1, 0, n_lines)
+			}
+			
+			lo, hi := editor.selection_range(&ed)
+			if lo != hi {
+				sel := [4]f32{0.25, 0.40, 0.62, 1.0}
+				for i in first ..< last {
+					ls := text.buffer_line_start(&ed.doc, i)
+					le := text.buffer_line_end(&ed.doc, i)
+					if hi <= ls || lo > le {
+						continue
+					}
+					line := text.buffer_line_clone(&ed.doc, i)
+					defer delete(line)
+					a := clamp(lo - ls, 0, len(line))
+					b := clamp(hi - ls, 0, len(line))
+					x0 := f32(TEXT_X) + render.font_width(line[:a])
+					x1 := f32(TEXT_X) + render.font_width(line[:b])
+					if hi > le && lo <= le {
+						x1 += 8
+					}
+					y := line_top(&ed, i, lh)
+					if x1 > x0 {
+						render.push_quad(&queue, {x0, y}, {x1 - x0, lh}, sel)
+					}
 				}
 			}
-		}
+	
+			for i in first ..< last {
+				line := text.buffer_line_clone(&ed.doc, i)
+				defer delete(line)
+				y := line_top(&ed, i, lh)
+				render.push_text(&queue, line, TEXT_X, y + render.the_font.ascent, {0.90, 0.90, 0.90, 1.0})
+			}
 
-		for i in first ..< last {
-			line := text.buffer_line_clone(&ed.doc, i)
+			line_i := text.buffer_line_at(&ed.doc, ed.cursor)
+			line_start := text.buffer_line_start(&ed.doc, line_i)
+			line := text.buffer_line_clone(&ed.doc, line_i)
 			defer delete(line)
-			y := line_top(&ed, i, lh)
-			render.push_text(&queue, line, TEXT_X, y + render.the_font.ascent, {0.90, 0.90, 0.90, 1.0})
+			prefix := line[:min(ed.cursor - line_start, len(line))]
+			cx := TEXT_X + render.font_width(prefix)
+			cy := line_top(&ed, line_i, lh)
+			baseline := cy + render.font_ascent()
+			if window.ime_preview_len > 0 {
+				preview := string(window.ime_preview[:window.ime_preview_len])
+				render.push_text(&queue, preview, cx, baseline, {0.70, 0.85, 1.00, 1.0})
+				cx += render.font_width(preview)
+			}
+			platform.ime_set_pos(&window, i32(cx), i32(cy + lh))
+			if caret_on || window.ime_preview_len > 0 {
+				render.push_quad(&queue, {cx, cy}, {2, lh}, {0.90, 0.90, 0.90, 1.0})
+			}
+	
+	
+			backend.begin_frame()
+			backend.execute(&queue)
+			backend.end_frame()
 		}
 
-		line_i := text.buffer_line_at(&ed.doc, ed.cursor)
-		line_start := text.buffer_line_start(&ed.doc, line_i)
-		line := text.buffer_line_clone(&ed.doc, line_i)
-		defer delete(line)
-		prefix := line[:min(ed.cursor - line_start, len(line))]
-		cx := TEXT_X + render.font_width(prefix)
-		cy := line_top(&ed, line_i, lh)
-		baseline := cy + render.font_ascent()
-		if window.ime_preview_len > 0 {
-			preview := string(window.ime_preview[:window.ime_preview_len])
-			render.push_text(&queue, preview, cx, baseline, {0.70, 0.85, 1.00, 1.0})
-			cx += render.font_width(preview)
+		wait_ms : u32 = BLINK_MS
+		since_wait := i64(time.duration_milliseconds(time.tick_since(last_input)))
+		if since_wait < BLINK_MS {
+			wait_ms = u32(BLINK_MS - since_wait)
+		} else {
+			into := since_wait % BLINK_MS
+			wait_ms = u32(BLINK_MS - into)
 		}
-		platform.ime_set_pos(&window, i32(cx), i32(cy + lh))
-		render.push_quad(&queue, {cx, cy}, {2, lh}, {0.90, 0.90, 0.90, 1.0})
-
-
-		backend.begin_frame()
-		backend.execute(&queue)
-		backend.end_frame()
+		if wait_ms < 1 {
+			wait_ms = 1
+		}
+		platform.window_wait(wait_ms)
 	}
 }

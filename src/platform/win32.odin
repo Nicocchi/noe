@@ -17,7 +17,8 @@ Window :: struct {
 	event_count:		int,
 	ime_composing: 		bool,
 	ime_preview: 		[256]u8,
-	ime_preview_len: 	int
+	ime_preview_len: 	int,
+	needs_redraw:		bool
 }
 
 g_ctx: runtime.Context
@@ -25,6 +26,7 @@ wgl_create_context_attribs: win.CreateContextAttribsARBType
 
 GL_MAJOR :: 4
 GL_MINOR :: 6
+QS_ALLINPUT :: 0x04FF
 
 window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 								lparam: win.LPARAM) -> win.LRESULT {
@@ -181,6 +183,7 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 				window.ime_composing = true
 				ime_clear_preview(window)
 			}
+			window.needs_redraw = true
 			return 0
 		}
 		case win.WM_IME_ENDCOMPOSITION:
@@ -189,6 +192,7 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 				window.ime_composing = false
 				ime_clear_preview(window)
 			}
+			window.needs_redraw = true
 			return 0
 		}
 		case win.WM_IME_COMPOSITION:
@@ -211,6 +215,7 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 				}
 				ImmReleaseContext(hwnd, himc)
 			}
+			window.needs_redraw = true
 			return 0
 		}
 		case win.WM_IME_SETCONTEXT:
@@ -266,6 +271,13 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 			event_push(window, Scroll_Event{d})
 			return 0
 		}
+		case win.WM_SIZE:
+		{
+			if window != nil {
+				window.needs_redraw = true
+			}
+			return 0
+		}
 	}
 
 	return win.DefWindowProcW(hwnd, msg, wparam, lparam)
@@ -318,6 +330,10 @@ window_create :: proc(w: ^Window, width, height: i32, title: string) -> bool {
 
 window_show :: proc(w: ^Window) {
 	win.ShowWindow(w.hwnd, win.SW_SHOW)
+}
+
+window_wait :: proc(timeout_ms: u32) {
+	win.MsgWaitForMultipleObjects(0, nil, false, timeout_ms, QS_ALLINPUT)
 }
 
 window_poll :: proc(w: ^Window) {
@@ -453,4 +469,11 @@ key_mods :: proc() -> Mods {
 		mods += {.Alt}
 	}
 	return mods
+}
+
+window_set_title :: proc(w: ^Window, title: string) {
+	if w == nil || w.hwnd == nil {
+		return
+	}
+	win.SetWindowTextW(w.hwnd, win.utf8_to_wstring(title))
 }

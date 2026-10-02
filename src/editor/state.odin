@@ -25,7 +25,8 @@ Editor :: struct {
     playing:        bool,
     path:           string,
     host:           ^platform.Window,
-    page_lines: int
+    page_lines:     int,
+    dirty:          bool
 }
 
 editor_init :: proc(ed: ^Editor, starter: string) {

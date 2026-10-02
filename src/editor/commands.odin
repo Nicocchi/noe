@@ -71,6 +71,10 @@ is_word :: proc(r: rune) -> bool {
     return unicode.is_letter(r) || unicode.is_digit(r) || r == '_'
 }
 
+is_punct :: proc(r: rune) -> bool {
+    return r != 0 && !unicode.is_space(r) && !is_word(r)
+}
+
 insert_text :: proc(ed: ^Editor, s: string) {
 	if len(s) == 0 {
 		return
@@ -236,6 +240,8 @@ move_word_left :: proc(ed: ^Editor, keep_sel: bool) {
             if is_word(r) {
                 pos = start
                 continue
+            } else if is_punct(r) {
+                pos = start
             }
             break
         }
@@ -254,6 +260,8 @@ move_word_right :: proc(ed: ^Editor, keep_sel: bool) {
         if is_word(r) {
             pos += size
             continue
+        } else if is_punct(r) {
+            pos += size
         }
         break
     }

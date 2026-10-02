@@ -14,6 +14,8 @@ undo_record_insert :: proc(ed: ^Editor, pos: int, s: string) {
         return
     }
 
+    editor_mark_dirty(ed)
+
     if ed.undo_head > 0 && ed.undo_head == len(ed.undo) {
         last := &ed.undo[ed.undo_head - 1]
         can_merge :=
@@ -43,6 +45,8 @@ undo_record_delete :: proc(ed: ^Editor, pos: int, s: string) {
     if ed.playing || len(s) == 0 {
         return
     }
+
+    editor_mark_dirty(ed)
 
     if ed.undo_head > 0 && ed.undo_head == len(ed.undo) {
         last := &ed.undo[ed.undo_head - 1]
