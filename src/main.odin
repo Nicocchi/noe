@@ -71,11 +71,18 @@ main :: proc() {
 	defer delete(editor.keymap)
 
 	ed: editor.Editor
-	editor.editor_init(&ed, "Nico")
+	editor.editor_init(&ed, "")
+	ed.host = &window
 	defer editor.editor_destroy(&ed)
 
 	for !window.should_close {
 		platform.window_poll(&window)
+		
+		lh_page := render.font_line_height()
+		ed.page_lines = 1
+		if lh_page > 0 && window.height > 0 {
+			ed.page_lines = max(int(f32(window.height) / lh_page) - 1, 1)
+		}
 
 		follow := false
 		for i in 0 ..< window.event_count {
@@ -107,7 +114,11 @@ main :: proc() {
 					switch ev.action {
 						case .Down:
 						{
-							editor.click_at(&ed, pos)
+							if .Shift in ev.mods {
+								editor.drag_to(&ed, pos)
+							} else {
+								editor.click_at(&ed, pos)
+							}
 						}
 						case .Move, .Up:
 						{

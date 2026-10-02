@@ -7,6 +7,7 @@ import "core:unicode/utf8"
 PIXEL_HEIGHT    :: 22
 PAD             :: 1
 MAX_FACES       :: 8    // How many font files are loaded at once
+TAB_SPACES      :: 4
 
 Glyph :: struct {
     uv_min, uv_max: [2]f32,
@@ -71,6 +72,11 @@ push_text :: proc(q: ^Render_Queue, text: string, x, y: f32, color: [4]f32) {
             continue
         }
 
+        if r == '\t' {
+            pen_x += font_glyph(' ').xadvance * TAB_SPACES
+            continue
+        }
+
         g := font_glyph(r)
         if g.ok && (g.size.x > 0 || g.size.y > 0) {
             push_quads(q, {Quad{
@@ -97,6 +103,10 @@ font_width :: proc(s: string) -> f32 {
 		if r == '\n' || r == '\r' {
 			continue
 		}
+        if r == '\t' {
+            w += font_glyph(' ').xadvance * TAB_SPACES
+            continue
+        }
 		w += font_glyph(r).xadvance
 	}
 	return w
@@ -221,6 +231,9 @@ font_index_at :: proc(s: string, x: f32) -> int {
             break
         }
         adv := font_glyph(r).xadvance
+        if r == '\t' {
+            adv = font_glyph(' ').xadvance * TAB_SPACES
+        }
         if x < pen + adv * 0.5 {
             return i
         }

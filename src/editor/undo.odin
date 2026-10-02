@@ -68,6 +68,14 @@ undo_record_delete :: proc(ed: ^Editor, pos: int, s: string) {
     ed.undo_head = len(ed.undo)
 }
 
+undo_reset :: proc(ed: ^Editor) {
+    for op in ed.undo {
+        delete(op.text)
+    }
+    clear(&ed.undo)
+    ed.undo_head = 0
+}
+
 cmd_undo :: proc(ed: ^Editor) {
     if ed.undo_head <= 0 {
         return

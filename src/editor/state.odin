@@ -1,6 +1,7 @@
 package editor
 
 import "../text"
+import "../platform"
 
 Undo_Kind :: enum {
     Insert,
@@ -21,7 +22,10 @@ Editor :: struct {
     scroll_y:       f32,
     undo:           [dynamic]Undo_Op,
     undo_head:      int,
-    playing:        bool
+    playing:        bool,
+    path:           string,
+    host:           ^platform.Window,
+    page_lines: int
 }
 
 editor_init :: proc(ed: ^Editor, starter: string) {
@@ -40,6 +44,7 @@ editor_destroy :: proc(ed: ^Editor) {
         delete(op.text)
     }
     delete(ed.undo)
+    delete(ed.path)
     ed^ = {}
 }
 

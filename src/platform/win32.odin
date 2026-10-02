@@ -77,20 +77,12 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 				return 0
 			}
 
-			mods: Mods
-			if u16(win.GetKeyState(win.VK_CONTROL)) & 0x8000 != 0 {
-				mods += {.Ctrl}
-			}
-			if u16(win.GetKeyState(win.VK_SHIFT)) & 0x8000 != 0 {
-				mods += {.Shift}
-			}
-			if u16(win.GetKeyState(win.VK_MENU)) & 0x8000 != 0 {
-				mods += {.Alt}
-			}
+			mods := key_mods()
 
 			if window.ime_composing {
 				switch wparam {
-					case win.VK_BACK, win.VK_LEFT, win.VK_RIGHT, win.VK_RETURN, win.VK_UP, win.VK_DOWN:
+					case win.VK_BACK, win.VK_LEFT, win.VK_RIGHT, win.VK_RETURN, win.VK_UP, win.VK_DOWN,
+     					 win.VK_HOME, win.VK_END, win.VK_DELETE, win.VK_PRIOR, win.VK_NEXT:
 					{
 						return win.DefWindowProcW(hwnd, msg, wparam, lparam)
 					}
@@ -123,6 +115,30 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 				{
 					key = .Enter
 				}
+				case win.VK_HOME:
+				{
+					key = .Home
+				}
+				case win.VK_END:
+				{
+					key = .End
+				}
+				case win.VK_DELETE:
+				{
+					key = .Delete
+				}
+				case win.VK_PRIOR:
+				{
+					key = .Page_Up
+				}
+				case win.VK_NEXT:
+				{
+					key = .Page_Down
+				}
+				case win.VK_TAB:
+				{
+					key = .Tab
+				}
 				case 'Z':
 				{
 					key = .Z
@@ -130,6 +146,26 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 				case 'Y':
 				{
 					key = .Y
+				}
+				case 'O':
+				{
+					key = .O
+				}
+				case 'S':
+				{
+					key = .S
+				}
+				case 'C':
+				{
+					key = .C
+				}
+				case 'X':
+				{
+					key = .X
+				}
+				case 'V':
+				{
+					key = .V
 				}
 				case:
 				{
@@ -192,7 +228,7 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 			win.SetCapture(hwnd)
 			x := f32(win.GET_X_LPARAM(lparam))
 			y := f32(win.GET_Y_LPARAM(lparam))
-			event_push(window, Mouse_Event{x, y, .Left, .Down})
+			event_push(window, Mouse_Event{x, y, .Left, .Down, key_mods()})
 			return 0
 		}
 		case win.WM_LBUTTONUP:
@@ -207,7 +243,7 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 
 			x := f32(win.GET_X_LPARAM(lparam))
 			y := f32(win.GET_Y_LPARAM(lparam))
-			event_push(window, Mouse_Event{x, y, .Left, .Up})
+			event_push(window, Mouse_Event{x, y, .Left, .Up, key_mods()})
 			return 0
 		}
 		case win.WM_MOUSEMOVE:
@@ -218,7 +254,7 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 
 			x := f32(win.GET_X_LPARAM(lparam))
 			y := f32(win.GET_Y_LPARAM(lparam))
-			event_push(window, Mouse_Event{x, y, .Left, .Move})
+			event_push(window, Mouse_Event{x, y, .Left, .Move, key_mods()})
 			return 0
 		}
 		case win.WM_MOUSEWHEEL:
@@ -403,4 +439,18 @@ gl_context_destroy :: proc(w: ^Window) {
 		win.wglDeleteContext(w.hglrc)
 		w.hglrc = nil
 	}
+}
+
+key_mods :: proc() -> Mods {
+	mods: Mods
+	if u16(win.GetKeyState(win.VK_CONTROL)) & 0x8000 != 0 {
+		mods += {.Ctrl}
+	}
+	if u16(win.GetKeyState(win.VK_SHIFT)) & 0x8000 != 0 {
+		mods += {.Shift}
+	}
+	if u16(win.GetKeyState(win.VK_MENU)) & 0x8000 != 0 {
+		mods += {.Alt}
+	}
+	return mods
 }

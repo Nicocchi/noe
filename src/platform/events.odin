@@ -10,8 +10,19 @@ Key :: enum {
     Up,
     Down,
     Enter,
+    Home,
+    End,
+    Delete,
+    Page_Up,
+    Page_Down,
+    Tab,
     Z,
-    Y
+    Y,
+    O,
+    S,
+    C,
+    X,
+    V
 }
 
 Text_Event :: struct {
@@ -51,7 +62,8 @@ Mouse_Action :: enum {
 Mouse_Event :: struct {
     x, y:   f32,
     button: Mouse_Button,
-    action: Mouse_Action
+    action: Mouse_Action,
+    mods:   Mods
 }
 
 Scroll_Event :: struct {
