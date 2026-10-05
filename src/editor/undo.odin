@@ -3,21 +3,23 @@ package editor
 import "../text"
 
 undo_clear_redo :: proc(ed: ^Editor) {
-    for i in ed.undo_head ..< len(ed.undo) {
-        delete(ed.undo[i].text)
+    b := active_buffer(ed)
+    for i in b.undo_head ..< len(b.undo) {
+        delete(b.undo[i].text)
     }
-    resize(&ed.undo, ed.undo_head)
+    resize(&b.undo, b.undo_head)
 }
 
 undo_record_insert :: proc(ed: ^Editor, pos: int, s: string) {
-    if ed.playing || len(s) == 0 {
+    b := active_buffer(ed)
+    if b.playing || len(s) == 0 {
         return
     }
 
     editor_mark_dirty(ed)
 
-    if ed.undo_head > 0 && ed.undo_head == len(ed.undo) {
-        last := &ed.undo[ed.undo_head - 1]
+    if b.undo_head > 0 && b.undo_head == len(b.undo) {
+        last := &b.undo[b.undo_head - 1]
         can_merge :=
             last.kind == .Insert &&
             last.pos + len(last.text) == pos &&
@@ -35,21 +37,25 @@ undo_record_insert :: proc(ed: ^Editor, pos: int, s: string) {
     }
 
     undo_clear_redo(ed)
+    if b.edit_depth == 0 {
+        b.undo_group += 1
+    }
     text_copy := make([]u8, len(s))
     copy(text_copy, s)
-    append(&ed.undo, Undo_Op{.Insert, pos, string(text_copy)})
-    ed.undo_head = len(ed.undo)
+    append(&b.undo, Undo_Op{.Insert, pos, string(text_copy), b.undo_group})
+    b.undo_head = len(b.undo)
 }
 
 undo_record_delete :: proc(ed: ^Editor, pos: int, s: string) {
-    if ed.playing || len(s) == 0 {
+    b := active_buffer(ed)
+    if b.playing || len(s) == 0 {
         return
     }
 
     editor_mark_dirty(ed)
 
-    if ed.undo_head > 0 && ed.undo_head == len(ed.undo) {
-        last := &ed.undo[ed.undo_head - 1]
+    if b.undo_head > 0 && b.undo_head == len(b.undo) {
+        last := &b.undo[b.undo_head - 1]
         can_merge :=
             last.kind == .Delete &&
             pos + len(s) == last.pos &&
@@ -68,60 +74,83 @@ undo_record_delete :: proc(ed: ^Editor, pos: int, s: string) {
     }
 
     undo_clear_redo(ed)
-    append(&ed.undo, Undo_Op{.Delete, pos, s})
-    ed.undo_head = len(ed.undo)
+    if b.edit_depth == 0 {
+        b.undo_group += 1
+    }
+    append(&b.undo, Undo_Op{.Delete, pos, s, b.undo_group})
+    b.undo_head = len(b.undo)
 }
 
 undo_reset :: proc(ed: ^Editor) {
-    for op in ed.undo {
+    b := active_buffer(ed)
+    for op in b.undo {
         delete(op.text)
     }
-    clear(&ed.undo)
-    ed.undo_head = 0
+    clear(&b.undo)
+    b.undo_head = 0
 }
 
 cmd_undo :: proc(ed: ^Editor) {
-    if ed.undo_head <= 0 {
+    v := active_view(ed)
+    b := active_buffer(ed)
+    if b.undo_head <= 0 {
         return
     }
-    ed.undo_head -= 1
-    op := ed.undo[ed.undo_head]
-    ed.playing = true
-    switch op.kind {
-        case .Insert:
-        {
-            text.buffer_delete(&ed.doc, op.pos, len(op.text))
-            set_cursor(ed, op.pos, false)
+    g := b.undo[b.undo_head - 1].group
+    b.playing = true
+    for b.undo_head > 0 && b.undo[b.undo_head - 1].group == g {
+        b.undo_head -= 1
+        op := b.undo[b.undo_head]
+        switch op.kind {
+            case .Insert:
+            {
+                text.buffer_delete(&b.doc, op.pos, len(op.text))
+                b.scroll_x_dirty = true
+                view_nudge(ed, v.buf_id, op.pos, -len(op.text))
+                set_cursor(ed, op.pos, false)
+            }
+            case .Delete:
+            {
+                text.buffer_insert(&b.doc, op.pos, op.text)
+                b.scroll_x_dirty = true
+                view_nudge(ed, v.buf_id, op.pos, len(op.text))
+                set_cursor(ed, op.pos + len(op.text), false)
+            }
         }
-        case .Delete:
-        {
-            text.buffer_insert(&ed.doc, op.pos, op.text)
-            set_cursor(ed, op.pos + len(op.text), false)
-        }
+        b.playing = false
     }
-    ed.playing = false
+
 }
 
 cmd_redo :: proc(ed: ^Editor) {
-    if ed.undo_head >= len(ed.undo) {
+    v := active_view(ed)
+    b := active_buffer(ed)
+    if b.undo_head >= len(b.undo) {
         return
     }
-    op := ed.undo[ed.undo_head]
-    ed.undo_head += 1
-    ed.playing = true
-    switch op.kind {
-        case .Insert:
-        {
-            text.buffer_insert(&ed.doc, op.pos, op.text)
-            set_cursor(ed, op.pos + len(op.text), false)
+    g := b.undo[b.undo_head].group
+    b.playing = true
+    for b.undo_head < len(b.undo) && b.undo[b.undo_head].group == g {
+        op := b.undo[b.undo_head]
+        b.undo_head += 1
+        switch op.kind {
+            case .Insert:
+            {
+                text.buffer_insert(&b.doc, op.pos, op.text)
+                b.scroll_x_dirty = true
+                view_nudge(ed, v.buf_id, op.pos, +len(op.text))
+                set_cursor(ed, op.pos + len(op.text), false)
+            }
+            case .Delete:
+            {
+                text.buffer_delete(&b.doc, op.pos, len(op.text))
+                b.scroll_x_dirty = true
+                view_nudge(ed, v.buf_id, op.pos, -len(op.text))
+                set_cursor(ed, op.pos, false)
+            }
         }
-        case .Delete:
-        {
-            text.buffer_delete(&ed.doc, op.pos, len(op.text))
-            set_cursor(ed, op.pos, false)
-        }
+        b.playing = false
     }
-    ed.playing = false
 }
 
 has_newline :: proc(s: string) -> bool {
@@ -132,4 +161,25 @@ has_newline :: proc(s: string) -> bool {
     }
 
     return false
+}
+
+begin_edit :: proc(ed: ^Editor) {
+    b := active_buffer(ed)
+    if b.playing {
+        return
+    }
+    if b.edit_depth == 0 {
+        b.undo_group += 1
+    }
+    b.edit_depth += 1
+}
+
+end_edit :: proc(ed: ^Editor) {
+    b := active_buffer(ed)
+    if b.playing {
+        return
+    }
+    if b.edit_depth > 0 {
+        b.edit_depth -= 1
+    }
 }

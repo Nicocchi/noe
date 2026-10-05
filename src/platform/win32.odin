@@ -97,6 +97,10 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 				{
 					key = .Backspace
 				}
+				case win.VK_ESCAPE:
+				{
+					key = .Escape
+				}
 				case win.VK_LEFT:
 				{
 					key = .Left
@@ -168,6 +172,14 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 				case 'V':
 				{
 					key = .V
+				}
+				case 'F':
+				{
+					key = .F
+				}
+				case 'P':
+				{
+					key = .P
 				}
 				case:
 				{
@@ -268,7 +280,7 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 				return 0
 			}
 			d := f32(win.GET_WHEEL_DELTA_WPARAM(wparam)) / f32(win.WHEEL_DELTA)
-			event_push(window, Scroll_Event{d})
+			event_push(window, Scroll_Event{d, key_mods()})
 			return 0
 		}
 		case win.WM_SIZE:

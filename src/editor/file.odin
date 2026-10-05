@@ -7,8 +7,9 @@ import "../text"
 import "../platform"
 
 editor_set_path :: proc(ed: ^Editor, path: string) {
-    delete(ed.path)
-    ed.path = strings.clone(path)
+    b := active_buffer(ed)
+    delete(b.path)
+    b.path = strings.clone(path)
 }
 
 editor_load_path :: proc(ed: ^Editor, path: string) -> bool {
@@ -34,28 +35,34 @@ editor_load_path :: proc(ed: ^Editor, path: string) -> bool {
     }
     defer delete(cleaned)
 
-    text.buffer_destroy(&ed.doc)
-    text.buffer_init(&ed.doc, max(len(cleaned) + 64, 4096))
-    text.buffer_insert(&ed.doc, 0, string(cleaned))
+    v := active_view(ed)
+    b := active_buffer(ed)
+
+    text.buffer_destroy(&b.doc)
+    text.buffer_init(&b.doc, max(len(cleaned) + 64, 4096))
+    text.buffer_insert(&b.doc, 0, string(cleaned))
+    b.scroll_x_dirty = true
     undo_reset(ed)
     editor_set_path(ed, path)
     set_cursor(ed, 0, false)
-    ed.scroll_y = 0
-    ed.dirty = false
+    v.scroll_x = 0
+    v.scroll_y = 0
+    b.dirty = false
     editor_update_title(ed)
     return true
 }
 
 editor_save :: proc(ed: ^Editor) -> bool {
-    if len(ed.path) == 0 {
+    b := active_buffer(ed)
+    if len(b.path) == 0 {
         return editor_save_as(ed)
     }
-    s := text.buffer_clone_string(&ed.doc)
+    s := text.buffer_clone_string(&b.doc)
     defer delete(s)
-    if os.write_entire_file(ed.path, s) != nil {
+    if os.write_entire_file(b.path, s) != nil {
         return false
     }
-    ed.dirty = false
+    b.dirty = false
     editor_update_title(ed)
     return true
 }
@@ -70,20 +77,25 @@ editor_save_as :: proc(ed: ^Editor) -> bool {
     return editor_save(ed)
 }
 
-editor_display_name :: proc(ed: ^Editor) -> string {
-    if len(ed.path) == 0 {
+buffer_display_name :: proc(b: ^Buffer) -> string {
+    if len(b.path) == 0 {
         return "untitled"
     }
-    i := len(ed.path) - 1
-    for i >= 0 && ed.path[i] != '/' && ed.path[i] != '\\' {
+    i := len(b.path) - 1
+    for i >= 0 && b.path[i] != '/' && b.path[i] != '\\' {
         i -= 1
     }
-    return ed.path[i + 1:]
+    return b.path[i + 1:]
+}
+
+editor_display_name :: proc(ed: ^Editor) -> string {
+    return buffer_display_name(active_buffer(ed))
 }
 
 editor_update_title :: proc(ed: ^Editor) {
+    b := active_buffer(ed)
     star := ""
-    if ed.dirty {
+    if b.dirty {
         star = " *"
     }
     title := fmt.tprintf("%s%s - NOE", editor_display_name(ed), star)
@@ -91,11 +103,34 @@ editor_update_title :: proc(ed: ^Editor) {
 }
 
 editor_mark_dirty :: proc(ed: ^Editor) {
-    if ed.playing || ed.dirty {
+    b := active_buffer(ed)
+    if b.playing || b.dirty {
         return
     }
-    ed.dirty = true
+    b.dirty = true
     editor_update_title(ed)
+}
+
+editor_confirm_close :: proc(ed: ^Editor) -> bool {
+    b := active_buffer(ed)
+    if !b.dirty {
+        return true
+    }
+    switch platform.dialog_unsaved(ed.host, editor_display_name(ed)) {
+        case .Discard:
+        {
+            return true
+        }
+        case .Cancel:
+        {
+            return false
+        }
+        case .Save:
+        {
+            return editor_save(ed)
+        }
+    }
+    return false
 }
 
 cmd_file_open :: proc(ed: ^Editor) {
@@ -104,6 +139,14 @@ cmd_file_open :: proc(ed: ^Editor) {
         return
     }
     defer delete(path)
+    for i in 0 ..< len(ed.buffers) {
+        if ed.buffers[i].path == path {
+            view_show_buffer(ed, i)
+            return
+        }
+    }
+    append(&ed.buffers, Buffer{scroll_x_dirty = true})
+    active_view(ed).buf_id = len(ed.buffers) - 1
     _ = editor_load_path(ed, path)
 }
 
@@ -113,4 +156,15 @@ cmd_file_save :: proc(ed: ^Editor) {
 
 cmd_file_save_as :: proc(ed: ^Editor) {
     _ = editor_save_as(ed)
+}
+
+view_show_buffer :: proc(ed: ^Editor, buf_id: int) {
+    v := active_view(ed)
+    v.buf_id = clamp(buf_id, 0, len(ed.buffers) - 1)
+    v.cursor = 0
+    v.sel_anchor = 0
+    v.desired_col = 0
+    v.scroll_x = 0
+    v.scroll_y = 0
+    editor_update_title(ed)
 }

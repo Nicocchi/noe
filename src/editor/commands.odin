@@ -65,6 +65,9 @@ register_default_commands :: proc() {
     register_command("delete_forward",   cmd_delete_forward)
     register_command("indent", cmd_indent)
     register_command("dedent", cmd_dedent)
+    register_command("find", cmd_find)
+    register_command("view_next", cmd_view_next)
+    register_command("buffer_switcher", cmd_buffer_switcher)
 }
 
 is_word :: proc(r: rune) -> bool {
@@ -75,14 +78,30 @@ is_punct :: proc(r: rune) -> bool {
     return r != 0 && !unicode.is_space(r) && !is_word(r)
 }
 
+is_stop :: proc(r: rune) -> bool {
+    switch r {
+        case '"', '\'', '`',
+             '(', ')', '[', ']', '{', '}':
+        {
+            return true
+        }
+    }
+    return false
+}
+
 insert_text :: proc(ed: ^Editor, s: string) {
 	if len(s) == 0 {
 		return
 	}
-
+    begin_edit(ed)
+    defer end_edit(ed)
 	_ = delete_selection(ed)
-    pos := ed.cursor
-	text.buffer_insert(&ed.doc, pos, s)
+    v := active_view(ed)
+    b := active_buffer(ed)
+    pos := v.cursor
+	text.buffer_insert(&b.doc, pos, s)
+    b.scroll_x_dirty = true
+    view_nudge(ed, v.buf_id, pos, len(s))
     undo_record_insert(ed, pos, s)
 	set_cursor(ed, pos + len(s), false)
 }
@@ -97,48 +116,73 @@ delete_selection :: proc(ed: ^Editor) -> bool {
         return false
     }
     lo, hi := selection_range(ed)
-    s := text.buffer_clone_range(&ed.doc, lo, hi - lo)
-    text.buffer_delete(&ed.doc, lo, hi - lo)
+    v := active_view(ed)
+    b := active_buffer(ed)
+    s := text.buffer_clone_range(&b.doc, lo, hi - lo)
+    text.buffer_delete(&b.doc, lo, hi - lo)
+    b.scroll_x_dirty = true
+    view_nudge(ed, v.buf_id, lo, -(hi - lo))
     undo_record_delete(ed, lo, s)
     set_cursor(ed, lo, false)
     return true
 }
 
-cmd_cursor_left       :: proc(ed: ^Editor) { move_left(ed, false) }
-cmd_select_left       :: proc(ed: ^Editor) { move_left(ed, true) }
-cmd_cursor_right      :: proc(ed: ^Editor) { move_right(ed, false) }
-cmd_select_right      :: proc(ed: ^Editor) { move_right(ed, true) }
-cmd_cursor_up         :: proc(ed: ^Editor) { move_up(ed, false) }
-cmd_select_up         :: proc(ed: ^Editor) { move_up(ed, true) }
-cmd_cursor_down       :: proc(ed: ^Editor) { move_down(ed, false) }
-cmd_select_down       :: proc(ed: ^Editor) { move_down(ed, true) }
-cmd_cursor_word_left  :: proc(ed: ^Editor) { move_word_left(ed, false) }
-cmd_select_word_left  :: proc(ed: ^Editor) { move_word_left(ed, true) }
-cmd_cursor_word_right :: proc(ed: ^Editor) { move_word_right(ed, false) }
-cmd_select_word_right :: proc(ed: ^Editor) { move_word_right(ed, true) }
-cmd_cursor_home     :: proc(ed: ^Editor) { move_home(ed, false) }
-cmd_select_home     :: proc(ed: ^Editor) { move_home(ed, true) }
-cmd_cursor_end      :: proc(ed: ^Editor) { move_end(ed, false) }
-cmd_select_end      :: proc(ed: ^Editor) { move_end(ed, true) }
-cmd_cursor_doc_home :: proc(ed: ^Editor) { move_doc_home(ed, false) }
-cmd_select_doc_home :: proc(ed: ^Editor) { move_doc_home(ed, true) }
-cmd_cursor_doc_end  :: proc(ed: ^Editor) { move_doc_end(ed, false) }
-cmd_select_doc_end  :: proc(ed: ^Editor) { move_doc_end(ed, true) }
-cmd_cursor_page_up  :: proc(ed: ^Editor) { move_page(ed, -1, false) }
-cmd_select_page_up  :: proc(ed: ^Editor) { move_page(ed, -1, true) }
-cmd_cursor_page_down:: proc(ed: ^Editor) { move_page(ed,  1, false) }
-cmd_select_page_down:: proc(ed: ^Editor) { move_page(ed,  1, true) }
+cmd_cursor_left         :: proc(ed: ^Editor) { move_left(ed, false) }
+cmd_select_left         :: proc(ed: ^Editor) { move_left(ed, true) }
+cmd_cursor_right        :: proc(ed: ^Editor) { move_right(ed, false) }
+cmd_select_right        :: proc(ed: ^Editor) { move_right(ed, true) }
+cmd_cursor_up           :: proc(ed: ^Editor) { move_up(ed, false) }
+cmd_select_up           :: proc(ed: ^Editor) { move_up(ed, true) }
+cmd_cursor_down         :: proc(ed: ^Editor) { move_down(ed, false) }
+cmd_select_down         :: proc(ed: ^Editor) { move_down(ed, true) }
+cmd_cursor_word_left    :: proc(ed: ^Editor) { move_word_left(ed, false) }
+cmd_select_word_left    :: proc(ed: ^Editor) { move_word_left(ed, true) }
+cmd_cursor_word_right   :: proc(ed: ^Editor) { move_word_right(ed, false) }
+cmd_select_word_right   :: proc(ed: ^Editor) { move_word_right(ed, true) }
+cmd_cursor_home         :: proc(ed: ^Editor) { move_home(ed, false) }
+cmd_select_home         :: proc(ed: ^Editor) { move_home(ed, true) }
+cmd_cursor_end          :: proc(ed: ^Editor) { move_end(ed, false) }
+cmd_select_end          :: proc(ed: ^Editor) { move_end(ed, true) }
+cmd_cursor_doc_home     :: proc(ed: ^Editor) { move_doc_home(ed, false) }
+cmd_select_doc_home     :: proc(ed: ^Editor) { move_doc_home(ed, true) }
+cmd_cursor_doc_end      :: proc(ed: ^Editor) { move_doc_end(ed, false) }
+cmd_select_doc_end      :: proc(ed: ^Editor) { move_doc_end(ed, true) }
+cmd_cursor_page_up      :: proc(ed: ^Editor) { move_page(ed, -1, false) }
+cmd_select_page_up      :: proc(ed: ^Editor) { move_page(ed, -1, true) }
+cmd_cursor_page_down    :: proc(ed: ^Editor) { move_page(ed,  1, false) }
+cmd_select_page_down    :: proc(ed: ^Editor) { move_page(ed,  1, true) }
 
 cmd_delete_backward :: proc(ed: ^Editor) {
-    if delete_selection(ed) || ed.cursor <= 0 {
+    v := active_view(ed)
+    b := active_buffer(ed)
+    if delete_selection(ed) || v.cursor <= 0 {
         return
     }
 
-    start, size := text.buffer_prev_rune(&ed.doc, ed.cursor)
-    s := text.buffer_clone_range(&ed.doc, start, size)
-    text.buffer_delete(&ed.doc, start, size)
+    start, size := text.buffer_prev_rune(&b.doc, v.cursor)
+    s := text.buffer_clone_range(&b.doc, start, size)
+    text.buffer_delete(&b.doc, start, size)
+    b.scroll_x_dirty = true
+    view_nudge(ed, v.buf_id, start, -size)
     undo_record_delete(ed, start, s)
     set_cursor(ed, start, false)
+}
+
+cmd_delete_forward :: proc(ed: ^Editor) {
+    v := active_view(ed)
+    b := active_buffer(ed)
+    if delete_selection(ed) || v.cursor >= text.buffer_len(&b.doc) {
+        return
+    }
+
+    end, size := text.buffer_next_rune(&b.doc, v.cursor)
+    s := text.buffer_clone_range(&b.doc, v.cursor, size)
+    text.buffer_delete(&b.doc, v.cursor, size)
+    b.scroll_x_dirty = true
+    view_nudge(ed, v.buf_id, v.cursor, -size)
+    undo_record_delete(ed, v.cursor, s)
+    set_cursor(ed, v.cursor, false)
+    _ = end
 }
 
 cmd_insert_newline :: proc(ed: ^Editor) {
@@ -150,7 +194,8 @@ cmd_edit_copy :: proc(ed: ^Editor) {
         return
     }
     lo, hi := selection_range(ed)
-    s := text.buffer_clone_range(&ed.doc, lo, hi - lo)
+    b := active_buffer(ed)
+    s := text.buffer_clone_range(&b.doc, lo, hi - lo)
     defer delete(s)
     _ = platform.clipboard_set(ed.host, s)
 }
@@ -160,7 +205,8 @@ cmd_edit_cut :: proc(ed: ^Editor) {
         return
     }
     lo, hi := selection_range(ed)
-    s := text.buffer_clone_range(&ed.doc, lo, hi - lo)
+    b := active_buffer(ed)
+    s := text.buffer_clone_range(&b.doc, lo, hi - lo)
     defer delete(s)
     if !platform.clipboard_set(ed.host, s) {
         return
@@ -183,7 +229,9 @@ move_left :: proc(ed: ^Editor, keep_sel: bool) {
         set_cursor(ed, lo, false)
         return
     }
-    start, _ := text.buffer_prev_rune(&ed.doc, ed.cursor)
+    v := active_view(ed)
+    b := active_buffer(ed)
+    start, _ := text.buffer_prev_rune(&b.doc, v.cursor)
     set_cursor(ed, start, keep_sel)
 }
 
@@ -193,81 +241,104 @@ move_right :: proc(ed: ^Editor, keep_sel: bool) {
         set_cursor(ed, hi, false)
         return
     }
-    end, _ := text.buffer_next_rune(&ed.doc, ed.cursor)
+    v := active_view(ed)
+    b := active_buffer(ed)
+    end, _ := text.buffer_next_rune(&b.doc, v.cursor)
     set_cursor(ed, end, keep_sel)
 }
 
 move_up :: proc(ed: ^Editor, keep_sel: bool) {
-    col := ed.desired_col
-    line := text.buffer_line_at(&ed.doc, ed.cursor)
-    pos := ed.cursor
+    v := active_view(ed)
+    b := active_buffer(ed)
+    col := v.desired_col
+    line := text.buffer_line_at(&b.doc, v.cursor)
+    pos := v.cursor
     if line > 0 {
-        pos = text.buffer_pos_at_line(&ed.doc, line - 1, col)
+        pos = text.buffer_pos_at_line(&b.doc, line - 1, col)
     }
     set_cursor(ed, pos, keep_sel)
-    ed.desired_col = col
+    v.desired_col = col
 }
 
 move_down :: proc(ed: ^Editor, keep_sel: bool) {
-    col := ed.desired_col
-    line := text.buffer_line_at(&ed.doc, ed.cursor)
-    pos := ed.cursor
-    if line + 1 < text.buffer_line_count(&ed.doc) {
-        pos = text.buffer_pos_at_line(&ed.doc, line + 1, col)
+    v := active_view(ed)
+    b := active_buffer(ed)
+    col := v.desired_col
+    line := text.buffer_line_at(&b.doc, v.cursor)
+    pos := v.cursor
+    if line + 1 < text.buffer_line_count(&b.doc) {
+        pos = text.buffer_pos_at_line(&b.doc, line + 1, col)
     }
     set_cursor(ed, pos, keep_sel)
-    ed.desired_col = col
+    v.desired_col = col
 }
 
 move_word_left :: proc(ed: ^Editor, keep_sel: bool) {
-    pos := ed.cursor
+    v := active_view(ed)
+    b := active_buffer(ed)
+    pos := v.cursor
     
     if pos > 0 {
-        pos, _ = text.buffer_prev_rune(&ed.doc, pos)
+        pos, _ = text.buffer_prev_rune(&b.doc, pos)
         
         for pos > 0 {
-            r, _ := text.buffer_peek_rune(&ed.doc, pos)
+            r, _ := text.buffer_peek_rune(&b.doc, pos)
             if unicode.is_space(r) {
-                pos, _ = text.buffer_prev_rune(&ed.doc, pos)
+                pos, _ = text.buffer_prev_rune(&b.doc, pos)
                 continue
             }
             break
         }
 
-        for pos > 0 {
-            start, _ := text.buffer_prev_rune(&ed.doc, pos)
-            r, _ := text.buffer_peek_rune(&ed.doc, start)
-            if is_word(r) {
-                pos = start
-                continue
-            } else if is_punct(r) {
-                pos = start
+        r, _ := text.buffer_peek_rune(&b.doc, pos)
+        if !is_stop(r) {
+            for pos > 0 {
+                start, _ := text.buffer_prev_rune(&b.doc, pos)
+                r, _ = text.buffer_peek_rune(&b.doc, start)
+                if is_stop(r) {
+                    break
+                } else if is_word(r) {
+                    pos = start
+                    continue
+                } else if is_punct(r) {
+                    pos = start
+                }
+                break
             }
-            break
         }
     }
     set_cursor(ed, pos, keep_sel)
 }
 
 move_word_right :: proc(ed: ^Editor, keep_sel: bool) {
-    pos := ed.cursor
-    n := text.buffer_len(&ed.doc)
-    for pos < n {
-        r, size := text.buffer_peek_rune(&ed.doc, pos)
-        if size == 0 {
+    v := active_view(ed)
+    b := active_buffer(ed)
+    pos := v.cursor
+    n := text.buffer_len(&b.doc)
+
+    r, size := text.buffer_peek_rune(&b.doc, pos)
+    if is_stop(r) {
+        pos += size
+    } else {
+        for pos < n {
+            r, size := text.buffer_peek_rune(&b.doc, pos)
+            if size == 0 {
+                break
+            }
+            if is_stop(r) {
+                break
+            } else if is_word(r) {
+                pos += size
+                continue
+            } else if is_punct(r) {
+                pos += size
+            }
             break
         }
-        if is_word(r) {
-            pos += size
-            continue
-        } else if is_punct(r) {
-            pos += size
-        }
-        break
     }
 
     for pos < n {
-        r, size := text.buffer_peek_rune(&ed.doc, pos)
+        r, size := text.buffer_peek_rune(&b.doc, pos)
         if size == 0 {
             break
         }
@@ -281,13 +352,17 @@ move_word_right :: proc(ed: ^Editor, keep_sel: bool) {
 }
 
 move_home :: proc(ed: ^Editor, keep_sel: bool) {
-    line := text.buffer_line_at(&ed.doc, ed.cursor)
-    set_cursor(ed, text.buffer_line_start(&ed.doc, line), keep_sel)
+    v := active_view(ed)
+    b := active_buffer(ed)
+    line := text.buffer_line_at(&b.doc, v.cursor)
+    set_cursor(ed, text.buffer_line_start(&b.doc, line), keep_sel)
 }
 
 move_end :: proc(ed: ^Editor, keep_sel: bool) {
-    line := text.buffer_line_at(&ed.doc, ed.cursor)
-    set_cursor(ed, text.buffer_line_end(&ed.doc, line), keep_sel)
+    v := active_view(ed)
+    b := active_buffer(ed)
+    line := text.buffer_line_at(&b.doc, v.cursor)
+    set_cursor(ed, text.buffer_line_end(&b.doc, line), keep_sel)
 }
 
 move_doc_home :: proc(ed: ^Editor, keep_sel: bool) {
@@ -295,30 +370,20 @@ move_doc_home :: proc(ed: ^Editor, keep_sel: bool) {
 }
 
 move_doc_end :: proc(ed: ^Editor, keep_sel: bool) {
-    set_cursor(ed, text.buffer_len(&ed.doc), keep_sel)
+    b := active_buffer(ed)
+    set_cursor(ed, text.buffer_len(&b.doc), keep_sel)
 }
 
 move_page :: proc(ed: ^Editor, dir: int, keep_sel: bool) {
-    col := ed.desired_col
-    line := text.buffer_line_at(&ed.doc, ed.cursor)
-    n := text.buffer_line_count(&ed.doc)
-    target := clamp(line + dir * max(ed.page_lines, 1), 0, n - 1)
-    pos := text.buffer_pos_at_line(&ed.doc, target, col)
+    v := active_view(ed)
+    b := active_buffer(ed)
+    col := v.desired_col
+    line := text.buffer_line_at(&b.doc, v.cursor)
+    n := text.buffer_line_count(&b.doc)
+    target := clamp(line + dir * max(v.page_lines, 1), 0, n - 1)
+    pos := text.buffer_pos_at_line(&b.doc, target, col)
     set_cursor(ed, pos, keep_sel)
-    ed.desired_col = col
-}
-
-cmd_delete_forward :: proc(ed: ^Editor) {
-    if delete_selection(ed) || ed.cursor >= text.buffer_len(&ed.doc) {
-        return
-    }
-
-    end, size := text.buffer_next_rune(&ed.doc, ed.cursor)
-    s := text.buffer_clone_range(&ed.doc, ed.cursor, size)
-    text.buffer_delete(&ed.doc, ed.cursor, size)
-    undo_record_delete(ed, ed.cursor, s)
-    set_cursor(ed, ed.cursor, false)
-    _ = end
+    v.desired_col = col
 }
 
 indent_line_range :: proc(ed: ^Editor) -> (first, last: int, ok: bool) {
@@ -327,9 +392,10 @@ indent_line_range :: proc(ed: ^Editor) -> (first, last: int, ok: bool) {
     }
 
     lo, hi := selection_range(ed)
-    first = text.buffer_line_at(&ed.doc, lo)
-    last = text.buffer_line_at(&ed.doc, hi)
-    if last > first && hi == text.buffer_line_start(&ed.doc, last) {
+    b := active_buffer(ed)
+    first = text.buffer_line_at(&b.doc, lo)
+    last = text.buffer_line_at(&b.doc, hi)
+    if last > first && hi == text.buffer_line_start(&b.doc, last) {
         last -= 1
     }
     return first, last, true
@@ -341,55 +407,82 @@ cmd_indent :: proc(ed: ^Editor) {
         insert_text(ed, "\t")
         return
     }
+    begin_edit(ed)
+    defer end_edit(ed)
+    v := active_view(ed)
+    b := active_buffer(ed)
     for i := last; i >= first; i -= 1 {
-        ls := text.buffer_line_start(&ed.doc, i)
-        text.buffer_insert(&ed.doc, ls, "\t")
+        ls := text.buffer_line_start(&b.doc, i)
+        text.buffer_insert(&b.doc, ls, "\t")
+        b.scroll_x_dirty = true
+        view_nudge(ed, v.buf_id, ls, 1)
         undo_record_insert(ed, ls, "\t")
-        if ed.cursor >= ls {
-            ed.cursor += 1
+        if v.cursor >= ls {
+            v.cursor += 1
         }
-        if ed.sel_anchor >= ls {
-            ed.sel_anchor += 1
+        if v.sel_anchor >= ls {
+            v.sel_anchor += 1
         }
     }
-    ed.desired_col = sync_col(ed)
+    v.desired_col = sync_col(ed)
 }
 
 cmd_dedent :: proc(ed: ^Editor) {
+    v := active_view(ed)
+    b := active_buffer(ed)
     first, last: int
     ok: bool
     if has_selection(ed) {
         first, last, ok = indent_line_range(ed)
     } else {
-        line := text.buffer_line_at(&ed.doc, ed.cursor)
+        line := text.buffer_line_at(&b.doc, v.cursor)
         first, last, ok = line, line, true
     }
     if !ok {
         return
     }
+    begin_edit(ed)
+    defer end_edit(ed)
     for i := last; i >= first; i -= 1 {
-        ls := text.buffer_line_start(&ed.doc, i)
-        le := text.buffer_line_end(&ed.doc, i)
+        ls := text.buffer_line_start(&b.doc, i)
+        le := text.buffer_line_end(&b.doc, i)
         n := 0
-        if ls < le && text.buffer_byte(&ed.doc, ls) == '\t' {
+        if ls < le && text.buffer_byte(&b.doc, ls) == '\t' {
             n = 1
         } else {
-            for n < TAB_WIDTH && ls + n < le && text.buffer_byte(&ed.doc, ls + n) == ' ' {
+            for n < TAB_WIDTH && ls + n < le && text.buffer_byte(&b.doc, ls + n) == ' ' {
                 n += 1
             }
         }
         if n == 0 {
             continue
         }
-        s := text.buffer_clone_range(&ed.doc, ls, n)
-        text.buffer_delete(&ed.doc, ls, n)
+        s := text.buffer_clone_range(&b.doc, ls, n)
+        text.buffer_delete(&b.doc, ls, n)
+        b.scroll_x_dirty = true
+        view_nudge(ed, v.buf_id, ls, -n)
         undo_record_delete(ed, ls, s)
-        if ed.cursor > ls {
-            ed.cursor = max(ed.cursor - n, ls)
+        if v.cursor > ls {
+            v.cursor = max(v.cursor - n, ls)
         }
-        if ed.sel_anchor > ls {
-            ed.sel_anchor = max(ed.sel_anchor - n, ls)
+        if v.sel_anchor > ls {
+            v.sel_anchor = max(v.sel_anchor - n, ls)
         }
     }
-    ed.desired_col = sync_col(ed)
+    v.desired_col = sync_col(ed)
+}
+
+cmd_view_next :: proc(ed: ^Editor) {
+    if len(ed.views) < 2 {
+        cur := active_view(ed)^
+        append(&ed.views, cur)
+        ed.active_view = 1
+        return
+    }
+    ed.active_view = (ed.active_view + 1) % len(ed.views)
+}
+
+cmd_buffer_switcher :: proc(ed: ^Editor) {
+    overlay_open(ed, .Switcher)
+    ed.overlay.sel = 0
 }

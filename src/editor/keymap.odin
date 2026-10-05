@@ -69,4 +69,7 @@ bind_default_keys :: proc() {
     bind_chord({.Ctrl, .Shift}, .End,  "select_doc_end")
     bind_key(.Tab, "indent")
     bind_chord({.Shift}, .Tab, "dedent")
+    bind_chord({.Ctrl}, .F, "find")
+    bind_chord({.Ctrl}, .Tab, "view_next")
+    bind_chord({.Ctrl}, .P, "buffer_switcher")
 }

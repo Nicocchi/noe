@@ -5,6 +5,7 @@ EVENT_CAP :: 64
 Key :: enum {
     Unknown,
     Backspace,
+    Escape,
     Left,
     Right,
     Up,
@@ -22,7 +23,9 @@ Key :: enum {
     S,
     C,
     X,
-    V
+    V,
+    F,
+    P
 }
 
 Text_Event :: struct {
@@ -67,7 +70,8 @@ Mouse_Event :: struct {
 }
 
 Scroll_Event :: struct {
-    notches: f32
+    notches:    f32,
+    mods:       Mods
 }
 
 Event :: union {

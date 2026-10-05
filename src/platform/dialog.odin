@@ -1,9 +1,42 @@
 package platform
 
 import win "core:sys/windows"
+import "core:fmt"
 
 WM_MOUSEFIRST :: 0x0200
 WM_MOUSELAST  :: 0x020E
+
+Unsaved_Choice :: enum {
+    Save,
+    Discard,
+    Cancel
+}
+
+dialog_unsaved :: proc(w: ^Window, name: string) -> Unsaved_Choice {
+    if w == nil || w.hwnd == nil {
+        return .Cancel
+    }
+    msg := fmt.tprintf("Save changes to %s?", name)
+    caption := "NOE"
+    r := win.MessageBoxW(
+        w.hwnd,
+        win.utf8_to_wstring(msg),
+        win.utf8_to_wstring(caption),
+        win.MB_YESNOCANCEL | win.MB_ICONWARNING
+    )
+    dialog_eat_mouse(w)
+    switch r {
+        case win.IDYES:
+        {
+            return .Save
+        }
+        case win.IDNO:
+        {
+            return .Discard
+        }
+    }
+    return .Cancel
+}
 
 dialog_eat_mouse :: proc(w: ^Window) {
     if w == nil || w.hwnd == nil {

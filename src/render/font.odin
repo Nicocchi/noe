@@ -4,7 +4,7 @@ import "core:os"
 import tt "vendor:stb/truetype"
 import "core:unicode/utf8"
 
-PIXEL_HEIGHT    :: 22
+PIXEL_HEIGHT    :: 18
 PAD             :: 1
 MAX_FACES       :: 8    // How many font files are loaded at once
 TAB_SPACES      :: 4
