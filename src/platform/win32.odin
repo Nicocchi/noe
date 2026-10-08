@@ -6,6 +6,12 @@ import gl "vendor:OpenGL"
 
 CLASS_NAME :: "NoeWindowClass"
 
+Cursor :: enum {
+    Arrow,
+    Size_WE
+}
+
+
 Window :: struct {
 	hwnd:				win.HWND,
 	hdc:				win.HDC,
@@ -18,7 +24,9 @@ Window :: struct {
 	ime_composing: 		bool,
 	ime_preview: 		[256]u8,
 	ime_preview_len: 	int,
-	needs_redraw:		bool
+	needs_redraw:		bool,
+	mouse_x, mouse_y:	f32,
+	cursor:				Cursor
 }
 
 g_ctx: runtime.Context
@@ -145,41 +153,169 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 				{
 					key = .Tab
 				}
-				case 'Z':
+				case win.VK_OEM_5:
 				{
-					key = .Z
+					key = .Backslash
 				}
-				case 'Y':
+				case win.VK_SPACE:
 				{
-					key = .Y
+					key = .Space
 				}
-				case 'O':
+				case win.VK_INSERT:
 				{
-					key = .O
+					key = .Insert
 				}
-				case 'S':
+				case '0' ..= '9':
 				{
-					key = .S
+					key = Key(int(Key.Digit_0) + int(wparam - '0'))
+				}
+				case win.VK_F1 ..= win.VK_F12:
+				{
+					key = Key(int(Key.F1) + int(wparam - win.VK_F1))
+				}
+				case win.VK_OEM_MINUS:
+				{
+					key = .Minus
+				}
+				case win.VK_OEM_PLUS:
+				{
+					key = .Equal
+				}
+				case win.VK_OEM_COMMA:
+				{
+					key = .Comma
+				}
+				case win.VK_OEM_PERIOD:
+				{
+					key = .Period
+				}
+				case win.VK_OEM_2:
+				{
+					key = .Slash
+				}
+				case win.VK_OEM_1:
+				{
+					key = .Semicolon
+				}
+				case win.VK_OEM_7:
+				{
+					key = .Apostrophe
+				}
+				case win.VK_OEM_4:
+				{
+					key = .LBracket
+				}
+				case win.VK_OEM_6:
+				{
+					key = .RBracket
+				}
+				case win.VK_OEM_3:
+				{
+					key = .Grave
+				}
+				case 'A':
+				{
+					key = .A
+				}
+				case 'B':
+				{
+					key = .B
 				}
 				case 'C':
 				{
 					key = .C
 				}
-				case 'X':
+				case 'D':
 				{
-					key = .X
+					key = .D
 				}
-				case 'V':
+				case 'E':
 				{
-					key = .V
+					key = .E
 				}
 				case 'F':
 				{
 					key = .F
 				}
+				case 'G':
+				{
+					key = .G
+				}
+				case 'H':
+				{
+					key = .H
+				}
+				case 'I':
+				{
+					key = .I
+				}
+				case 'J':
+				{
+					key = .J
+				}
+				case 'K':
+				{
+					key = .K
+				}
+				case 'L':
+				{
+					key = .L
+				}
+				case 'M':
+				{
+					key = .M
+				}
+				case 'N':
+				{
+					key = .N
+				}
+				case 'O':
+				{
+					key = .O
+				}
 				case 'P':
 				{
 					key = .P
+				}
+				case 'Q':
+				{
+					key = .Q
+				}
+				case 'R':
+				{
+					key = .R
+				}
+				case 'S':
+				{
+					key = .S
+				}
+				case 'T':
+				{
+					key = .T
+				}
+				case 'U':
+				{
+					key = .U
+				}
+				case 'V':
+				{
+					key = .V
+				}
+				case 'W':
+				{
+					key = .W
+				}
+				case 'X':
+				{
+					key = .X
+				}
+				case 'Y':
+				{
+					key = .Y
+				}
+				case 'Z':
+				{
+					key = .Z
 				}
 				case:
 				{
@@ -243,9 +379,9 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 			}
 
 			win.SetCapture(hwnd)
-			x := f32(win.GET_X_LPARAM(lparam))
-			y := f32(win.GET_Y_LPARAM(lparam))
-			event_push(window, Mouse_Event{x, y, .Left, .Down, key_mods()})
+			window.mouse_x = f32(win.GET_X_LPARAM(lparam))
+			window.mouse_y = f32(win.GET_Y_LPARAM(lparam))
+			event_push(window, Mouse_Event{window.mouse_x, window.mouse_y, .Left, .Down, key_mods()})
 			return 0
 		}
 		case win.WM_LBUTTONUP:
@@ -258,20 +394,22 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 				win.ReleaseCapture()
 			}
 
-			x := f32(win.GET_X_LPARAM(lparam))
-			y := f32(win.GET_Y_LPARAM(lparam))
-			event_push(window, Mouse_Event{x, y, .Left, .Up, key_mods()})
+			window.mouse_x = f32(win.GET_X_LPARAM(lparam))
+			window.mouse_y = f32(win.GET_Y_LPARAM(lparam))
+			event_push(window, Mouse_Event{window.mouse_x, window.mouse_y, .Left, .Up, key_mods()})
 			return 0
 		}
 		case win.WM_MOUSEMOVE:
 		{
-			if window == nil || window.ime_composing || (wparam & win.MK_LBUTTON == 0) {
+			if window == nil || window.ime_composing {
 				return 0
 			}
-
-			x := f32(win.GET_X_LPARAM(lparam))
-			y := f32(win.GET_Y_LPARAM(lparam))
-			event_push(window, Mouse_Event{x, y, .Left, .Move, key_mods()})
+			window.mouse_x = f32(win.GET_X_LPARAM(lparam))
+			window.mouse_y = f32(win.GET_Y_LPARAM(lparam))
+			if wparam & win.MK_LBUTTON == 0 {
+				return 0
+			}
+			event_push(window, Mouse_Event{window.mouse_x, window.mouse_y, .Left, .Move, key_mods()})
 			return 0
 		}
 		case win.WM_MOUSEWHEEL:
@@ -289,6 +427,18 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 				window.needs_redraw = true
 			}
 			return 0
+		}
+		case win.WM_SETCURSOR:
+		{
+			if window != nil && win.LOWORD(lparam) == win.HTCLIENT {
+				id := win.IDC_ARROW
+				if window.cursor == .Size_WE {
+					id = win.IDC_SIZEWE
+				}
+				win.SetCursor(win.LoadCursorA(nil, id))
+				return 1
+			}
+			return win.DefWindowProcW(hwnd, msg, wparam, lparam)
 		}
 	}
 
@@ -488,4 +638,16 @@ window_set_title :: proc(w: ^Window, title: string) {
 		return
 	}
 	win.SetWindowTextW(w.hwnd, win.utf8_to_wstring(title))
+}
+
+window_set_cursor :: proc(w: ^Window, c: Cursor) {
+	if w.cursor == c {
+		return
+	}
+	w.cursor = c
+	id := win.IDC_ARROW
+	if c == .Size_WE {
+		id = win.IDC_SIZEWE
+	}
+	win.SetCursor(win.LoadCursorA(nil, id))
 }

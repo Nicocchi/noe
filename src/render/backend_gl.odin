@@ -123,10 +123,6 @@ gl_init :: proc(w: ^platform.Window) -> bool {
     gl.BindVertexArray(0)
 
     gls.atlas = gl_texture_create(ATLAS_SIZE, ATLAS_SIZE, .R8)
-    if !font_init() {
-        gl_shutdown()
-        return false
-    }
     pixels := make([]u8, ATLAS_SIZE * ATLAS_SIZE)
     defer delete(pixels)
     pixels[0] = 255

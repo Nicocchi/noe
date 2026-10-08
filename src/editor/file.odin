@@ -19,6 +19,13 @@ editor_load_path :: proc(ed: ^Editor, path: string) -> bool {
     }
     defer delete(data)
 
+    nl: Newline = .LF
+    for ch in data {
+        if ch == '\r' {
+            nl = .CRLF
+            break
+        }
+    }
     n := 0
     for b in data {
         if b != '\r' {
@@ -41,6 +48,7 @@ editor_load_path :: proc(ed: ^Editor, path: string) -> bool {
     text.buffer_destroy(&b.doc)
     text.buffer_init(&b.doc, max(len(cleaned) + 64, 4096))
     text.buffer_insert(&b.doc, 0, string(cleaned))
+    b.newline = nl
     b.scroll_x_dirty = true
     undo_reset(ed)
     editor_set_path(ed, path)
@@ -49,6 +57,7 @@ editor_load_path :: proc(ed: ^Editor, path: string) -> bool {
     v.scroll_y = 0
     b.dirty = false
     editor_update_title(ed)
+    script_run_hooks(ed, "open", path)
     return true
 }
 
@@ -59,11 +68,36 @@ editor_save :: proc(ed: ^Editor) -> bool {
     }
     s := text.buffer_clone_string(&b.doc)
     defer delete(s)
-    if os.write_entire_file(b.path, s) != nil {
+
+    out := s
+    crlf: []u8
+    if b.newline == .CRLF {
+        extra := 0
+        for ch in s {
+            if ch == '\n' {
+                extra += 1
+            }
+        }
+        crlf = make([]u8, len(s) + extra)
+        j := 0
+        for ch in s {
+            if ch == '\n' {
+                crlf[j] = '\r'
+                j += 1
+            }
+        }
+        out = string(crlf)
+    }
+    defer if len(crlf) > 0 {
+        delete(crlf)
+    }
+
+    if os.write_entire_file(b.path, out) != nil {
         return false
     }
     b.dirty = false
     editor_update_title(ed)
+    script_run_hooks(ed, "save", b.path)
     return true
 }
 
@@ -166,5 +200,6 @@ view_show_buffer :: proc(ed: ^Editor, buf_id: int) {
     v.desired_col = 0
     v.scroll_x = 0
     v.scroll_y = 0
+    clear(&v.extras)
     editor_update_title(ed)
 }

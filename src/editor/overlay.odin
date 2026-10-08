@@ -122,6 +122,13 @@ cmd_find :: proc(ed: ^Editor) {
     overlay_open(ed, .Find)
 }
 
+ascii_fold :: proc(b: u8) -> u8 {
+    if b >= 'A' && b <= 'Z' {
+        return b + 32
+    }
+    return b
+}
+
 find_in_buffer :: proc(b: ^text.Buffer, query: string, start, end: int) -> (pos: int, ok: bool) {
     q := len(query)
     if q == 0 {
@@ -136,7 +143,14 @@ find_in_buffer :: proc(b: ^text.Buffer, query: string, start, end: int) -> (pos:
     for i := start; i + q <= end; i += 1 {
         matched := true
         for j in 0 ..< q {
-            if text.buffer_byte(b, i + j) != query[j] {
+            a := text.buffer_byte(b, i + j)
+            c := query[j]
+            if settings.find_case_sensitive {
+                if a != c {
+                    matched = false
+                    break
+                }
+            } else if ascii_fold(a) != ascii_fold(c) {
                 matched = false
                 break
             }

@@ -4,10 +4,11 @@ import "core:os"
 import tt "vendor:stb/truetype"
 import "core:unicode/utf8"
 
-PIXEL_HEIGHT    :: 18
 PAD             :: 1
 MAX_FACES       :: 8    // How many font files are loaded at once
-TAB_SPACES      :: 4
+pixel_height: f32       = 18
+tab_spaces:   f32       = 4
+tofu:         [4]f32    = {0.55, 0.55, 0.55, 1.0}
 
 Glyph :: struct {
     uv_min, uv_max: [2]f32,
@@ -36,18 +37,15 @@ Font :: struct {
 
 the_font: Font
 
-font_init :: proc() -> bool {
+font_init :: proc(path: string) -> bool {
     the_font.glyphs = make(map[rune]Glyph)
     the_font.pack_x = 1
     the_font.pack_y = 0
     the_font.pack_row_h = 1
 
-    if !font_add_face("C:/Windows/Fonts/consola.ttf") {
+    if !font_add_face(path) {
         return false
     }
-    //TODO: Reduce memory footprint. Commented out until ready to reduce
-	// _ = font_add_face("C:/Windows/Fonts/msyh.ttc")
-    // _ = font_add_face("C:/Windows/Fonts/malgun.ttf")
 
     a, d, g: i32
     tt.GetFontVMetrics(&the_font.faces[0].info, &a, &d, &g)
@@ -73,7 +71,7 @@ push_text :: proc(q: ^Render_Queue, text: string, x, y: f32, color: [4]f32) {
         }
 
         if r == '\t' {
-            pen_x += font_glyph(' ').xadvance * TAB_SPACES
+            pen_x += font_glyph(' ').xadvance * tab_spaces
             continue
         }
 
@@ -87,7 +85,7 @@ push_text :: proc(q: ^Render_Queue, text: string, x, y: f32, color: [4]f32) {
                 color
             }})
         } else if !g.ok {
-            push_quad(q, {pen_x, pen_y - the_font.ascent}, {max(g.xadvance, 8) * 0.6, the_font.ascent * 0.8}, {0.55, 0.55, 0.55, 1.0})
+            push_quad(q, {pen_x, pen_y - the_font.ascent}, {max(g.xadvance, 8) * 0.6, the_font.ascent * 0.8}, tofu)
         }
         pen_x += g.xadvance
     }
@@ -104,7 +102,7 @@ font_width :: proc(s: string) -> f32 {
 			continue
 		}
         if r == '\t' {
-            w += font_glyph(' ').xadvance * TAB_SPACES
+            w += font_glyph(' ').xadvance * tab_spaces
             continue
         }
 		w += font_glyph(r).xadvance
@@ -135,7 +133,7 @@ font_add_face :: proc(path: string, ttc_index: i32 = 0) -> bool {
         return false
     }
     face.ttf = data
-    face.scale = tt.ScaleForPixelHeight(&face.info, PIXEL_HEIGHT)
+    face.scale = tt.ScaleForPixelHeight(&face.info, pixel_height)
     the_font.face_count += 1
     return true
 }
@@ -232,7 +230,7 @@ font_index_at :: proc(s: string, x: f32) -> int {
         }
         adv := font_glyph(r).xadvance
         if r == '\t' {
-            adv = font_glyph(' ').xadvance * TAB_SPACES
+            adv = font_glyph(' ').xadvance * tab_spaces
         }
         if x < pen + adv * 0.5 {
             return i
@@ -241,4 +239,11 @@ font_index_at :: proc(s: string, x: f32) -> int {
         i += n
     }
     return len(s)
+}
+
+font_clear_atlas :: proc() {
+    pixels := make([]u8, ATLAS_SIZE * ATLAS_SIZE)
+    defer delete(pixels)
+    pixels[0] = 255
+    gl_texture_update(gls.atlas, {0, 0, ATLAS_SIZE, ATLAS_SIZE}, pixels)
 }

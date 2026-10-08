@@ -1,5 +1,6 @@
 package editor
 
+import "core:strings"
 import "../platform"
 
 Chord :: struct {
@@ -10,11 +11,23 @@ Chord :: struct {
 keymap: map[Chord]string
 
 bind_key :: proc(key: platform.Key, command: string) {
-    keymap[Chord{{}, key}] = command
+    bind_chord({}, key, command)
 }
 
 bind_chord :: proc(mods: platform.Mods, key: platform.Key, command: string) {
-    keymap[Chord{mods, key}] = command
+    chord := Chord{mods, key}
+    if old, ok := keymap[chord]; ok {
+        delete(old)
+    }
+    keymap[chord] = strings.clone(command)
+}
+
+unbind_chord :: proc(mods: platform.Mods, key: platform.Key) {
+    chord := Chord{mods, key}
+    if old, ok := keymap[chord]; ok {
+        delete(old)
+        delete_key(&keymap, chord)
+    }
 }
 
 lookup_key :: proc(key: platform.Key, mods: platform.Mods) -> (string, bool) {
@@ -70,6 +83,12 @@ bind_default_keys :: proc() {
     bind_key(.Tab, "indent")
     bind_chord({.Shift}, .Tab, "dedent")
     bind_chord({.Ctrl}, .F, "find")
-    bind_chord({.Ctrl}, .Tab, "view_next")
+    bind_chord({.Ctrl}, .Backslash, "view_next")
+    bind_chord({.Ctrl}, .H, "view_left")
+    bind_chord({.Ctrl}, .L, "view_right")
     bind_chord({.Ctrl}, .P, "buffer_switcher")
+    bind_chord({.Ctrl}, .A, "select_all")
+    bind_chord({.Ctrl}, .D, "add_next_match")
+    bind_key(.Escape, "carets_clear")
+    bind_chord({.Ctrl, .Shift}, .R,  "reload_config")
 }
