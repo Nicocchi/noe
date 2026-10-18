@@ -77,13 +77,14 @@ push_text :: proc(q: ^Render_Queue, text: string, x, y: f32, color: [4]f32) {
 
         g := font_glyph(r)
         if g.ok && (g.size.x > 0 || g.size.y > 0) {
-            push_quads(q, {Quad{
+            one := [1]Quad{Quad{
                 {pen_x + g.xoff, pen_y + g.yoff},
                 g.size,
                 g.uv_min,
                 g.uv_max,
                 color
-            }})
+            }}
+            push_quads(q, one[:])
         } else if !g.ok {
             push_quad(q, {pen_x, pen_y - the_font.ascent}, {max(g.xadvance, 8) * 0.6, the_font.ascent * 0.8}, tofu)
         }

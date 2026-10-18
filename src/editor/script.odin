@@ -41,6 +41,7 @@ script_init_path :: proc() -> (path: string, ok: bool) {
 }
 
 script_init :: proc(ed: ^Editor) {
+    lex_load_all()
     script_ctx = context
     L := lua.L_newstate()
     if L == nil {
@@ -193,6 +194,11 @@ lua_api_set :: proc "c" (L: ^lua.State) -> c.int {
         case "overlay_list":    settings.overlay_list = lua_read_color(L)
         case "overlay_sel_fg":  settings.overlay_sel_fg = lua_read_color(L)
         case "ime_preview":     settings.ime_preview = lua_read_color(L)
+        case "keyword":         settings.keyword = lua_read_color(L)
+        case "comment":         settings.comment = lua_read_color(L)
+        case "string":          settings.lit_string = lua_read_color(L)
+        case "number":          settings.lit_number = lua_read_color(L)
+        case "directive":       settings.directive = lua_read_color(L)
         case "gutter_min_digits":
         {
             settings.gutter_min_digits = max(int(lua.L_checkinteger(L, 2)), 1)
@@ -327,6 +333,11 @@ lua_api_get :: proc "c" (L: ^lua.State) -> c.int {
     case "overlay_list":       lua_push_color(L, settings.overlay_list); return 3
     case "overlay_sel_fg":     lua_push_color(L, settings.overlay_sel_fg); return 3
     case "ime_preview":        lua_push_color(L, settings.ime_preview); return 3
+    case "keyword":            lua_push_color(L, settings.keyword); return 3
+    case "comment":            lua_push_color(L, settings.comment); return 3
+    case "string":             lua_push_color(L, settings.lit_string); return 3
+    case "number":             lua_push_color(L, settings.lit_number); return 3
+    case "directive":          lua_push_color(L, settings.directive); return 3
     case "gutter_min_digits":  lua.pushinteger(L, lua.Integer(settings.gutter_min_digits)); return 1
     case "gutter_pad":         lua.pushnumber(L, lua.Number(settings.gutter_pad)); return 1
     case "status_pad":         lua.pushnumber(L, lua.Number(settings.status_pad)); return 1
@@ -623,6 +634,7 @@ script_status_line :: proc(ed: ^Editor) -> (left, right: string, ok: bool) {
         lua.pop(L, 1)
         return
     }
+    lua.gc(L, .STEP, 200)
     left = strings.clone(string(lua.tostring(L, -2)), context.temp_allocator)
     right = strings.clone(string(lua.tostring(L, -1)), context.temp_allocator)
     lua.pop(L, 2)
@@ -687,5 +699,10 @@ script_reload :: proc(ed: ^Editor) {
         b.newline = settings.newline
     }
     ed.split_t = settings.split_t
+    lex_load_all()
+    for &buf in ed.buffers {
+        buf.lex_id = lex_index_from_path(buf.path)
+        buf.lex_dirty = true
+    }
     ed.font_dirty = true
 }

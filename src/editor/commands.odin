@@ -242,6 +242,8 @@ delete_selection :: proc(ed: ^Editor) -> bool {
     if !has_selection(ed) {
         return false
     }
+    begin_edit(ed, true)
+    defer end_edit(ed)
     lo, hi := selection_range(ed)
     v := active_view(ed)
     b := active_buffer(ed)
@@ -289,6 +291,8 @@ cmd_select_all :: proc(ed: ^Editor) {
 cmd_delete_backward :: proc(ed: ^Editor) {
     v := active_view(ed)
     b := active_buffer(ed)
+    begin_edit(ed, true)
+    defer end_edit(ed)
     if delete_selection(ed) || v.cursor <= 0 {
         return
     }
@@ -326,6 +330,8 @@ cmd_delete_backward :: proc(ed: ^Editor) {
 cmd_delete_forward :: proc(ed: ^Editor) {
     v := active_view(ed)
     b := active_buffer(ed)
+    begin_edit(ed, true)
+    defer end_edit(ed)
     if delete_selection(ed) || v.cursor >= text.buffer_len(&b.doc) {
         return
     }

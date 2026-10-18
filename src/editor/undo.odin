@@ -140,7 +140,7 @@ cmd_undo :: proc(ed: ^Editor) {
         }
     }
     b.typing = false
-
+    b.lex_dirty = true
 }
 
 cmd_redo :: proc(ed: ^Editor) {
@@ -181,6 +181,7 @@ cmd_redo :: proc(ed: ^Editor) {
         }
     }
     b.typing = false
+    b.lex_dirty = true
 }
 
 has_newline :: proc(s: string) -> bool {
@@ -228,5 +229,6 @@ end_edit :: proc(ed: ^Editor) {
 
     if b.edit_depth == 0 {
         script_run_hooks(ed, "change", active_buffer(ed).path)
+        b.lex_dirty = true
     }
 }

@@ -207,7 +207,7 @@ gl_flush_quads :: proc() {
 
     gl.BindVertexArray(gls.vao)
 	gl.BindBuffer(gl.ARRAY_BUFFER, gls.inst_vbo)
-	gl.BufferData(gl.ARRAY_BUFFER, size_of(Quad) * gls.inst_used, &gls.instances[0], gl.STREAM_DRAW)
+	gl.BufferSubData(gl.ARRAY_BUFFER, 0, size_of(Quad) * gls.inst_used, &gls.instances[0])
 	gl.DrawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, i32(gls.inst_used))
 	gls.inst_used = 0
 }

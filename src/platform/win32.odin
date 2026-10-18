@@ -360,6 +360,7 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 				}
 				if lparam & GCS_COMPSTR != 0 {
 					window.ime_preview_len = ime_read_utf8(himc, GCS_COMPSTR, window.ime_preview[:])
+					window.needs_redraw = true
 				}
 				ImmReleaseContext(hwnd, himc)
 			}

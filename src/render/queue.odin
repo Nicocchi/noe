@@ -90,7 +90,8 @@ push_clear :: proc(q: ^Render_Queue, color: [4]f32) -> bool {
 
 push_quad :: proc(q: ^Render_Queue, pos, size: [2]f32, color: [4]f32) -> bool {
     uv_min, uv_max := white_uv()
-    return push_quads(q, {Quad{pos, size, uv_min, uv_max, color}})
+    one := [1]Quad{Quad{pos, size, uv_min, uv_max, color}}
+    return push_quads(q, one[:])
 }
 
 push_quads :: proc(q: ^Render_Queue, quads: []Quad) -> bool {

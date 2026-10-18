@@ -48,7 +48,10 @@ Buffer :: struct {
     max_scroll_x:   f32,
     scroll_x_dirty: bool,
     typing:         bool,
-    pending_before: []Caret
+    pending_before: []Caret,
+    tokens:         [dynamic]Token,
+    lex_dirty:      bool,
+    lex_id:         int
 }
 
 Caret :: struct {
@@ -101,6 +104,11 @@ Settings :: struct {
     overlay_list:           [4]f32,
     overlay_sel_fg:         [4]f32,
     ime_preview:            [4]f32,
+    keyword:                [4]f32,
+    comment:                [4]f32,
+    lit_string:             [4]f32,
+    lit_number:             [4]f32,
+    directive:              [4]f32,
     gutter_min_digits:      int,
     gutter_pad:             f32,
     status_pad:             f32,
@@ -148,6 +156,11 @@ settings_defaults := Settings{
     overlay_list        = {0.70, 0.70, 0.70, 1.0},
     overlay_sel_fg      = {0.95, 0.95, 0.95, 1.0},
     ime_preview         = {0.70, 0.85, 1.00, 1.0},
+    keyword             = {0.34, 0.61, 0.84, 1.0},
+    comment             = {0.42, 0.60, 0.33, 1.0},
+    lit_string          = {0.81, 0.57, 0.47, 1.0},
+    lit_number          = {0.71, 0.81, 0.66, 1.0},
+    directive           = {0.78, 0.54, 0.90, 1.0},
     gutter_min_digits   = 3,
     gutter_pad          = 12,
     status_pad          = 8,
@@ -200,6 +213,8 @@ editor_init :: proc(ed: ^Editor, starter: string) {
     text.buffer_insert(&b.doc, 0, starter)
     b.undo = make([dynamic]Undo_Op)
     b.scroll_x_dirty = true
+    b.lex_id = lex_index_named("odin")
+    b.lex_dirty = true
     v.cursor = text.buffer_len(&b.doc)
     v.sel_anchor = v.cursor
     v.desired_col = sync_col(ed)
@@ -216,6 +231,7 @@ editor_destroy :: proc(ed: ^Editor) {
         delete(b.undo)
         delete(b.pending_before)
         delete(b.path)
+        delete(b.tokens)
     }
     delete(ed.buffers)
     for &v in ed.views {

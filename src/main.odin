@@ -108,6 +108,8 @@ main :: proc() {
 	ed: editor.Editor
 	editor.editor_init(&ed, "")
 	editor.script_init(&ed)
+	editor.active_buffer(&ed).lex_id = editor.lex_index_named("odin")
+	editor.active_buffer(&ed).lex_dirty = true
 	defer editor.script_shutdown(&ed)
 	live_path := strings.clone(font_path_of())
 	live_fallback := strings.clone(editor.settings.font_fallback)
@@ -385,6 +387,7 @@ main :: proc() {
 		if window.ime_preview_len == 0 && since >= blink {
 			on = (since / blink) % 2 == 0
 		}
+
 		if on != caret_on {
 			caret_on = on
 			window.needs_redraw = true
@@ -427,6 +430,10 @@ main :: proc() {
 					last = clamp(int((dv.scroll_y + dtr.h) / lh) + 1, 0, n_lines)
 				}
 
+				if db.lex_dirty {
+					editor.buffer_lex(db)
+				}
+
 				// Gutter
 				if dgr.x > 0 {
 					render.push_clip(&queue, {dgr.x, dgr.y}, {dgr.w, dgr.h})
@@ -446,7 +453,8 @@ main :: proc() {
 				}
 	
 				// Text area
-				render.push_clip(&queue, {dtr.x, dtr.y}, {dtr.w, dtr.h})
+				head := max(editor.settings.text_pad_y, 2)
+				render.push_clip(&queue, {dtr.x, dtr.y - head}, {dtr.w, dtr.h + head})
 
 				sel := editor.settings.selection
 				for pass in 0 ..< 1 + len(dv.extras) {
@@ -482,13 +490,49 @@ main :: proc() {
 						}
 					}
 				}
-		
+
 				for i in first ..< last {
 					line := text.buffer_line_clone(&db.doc, i)
 					defer delete(line)
+					ls := text.buffer_line_start(&db.doc, i)
+					le := text.buffer_line_end(&db.doc, i)
 					y := line_top(dv, dtr, i, lh)
-					render.push_text(&queue, line, dtr.x - dv.scroll_x, y + render.the_font.ascent, editor.settings.text)
+					baseline := y + render.the_font.ascent
+					origin := dtr.x - dv.scroll_x
+					col := 0
+					for t in 0 ..< len(db.tokens) {
+						tok := db.tokens[t]
+						if tok.pos + tok.len <= ls {
+							continue
+						}
+						if tok.pos >= le {
+							break
+						}
+						a := max(tok.pos, ls) - ls
+						b := min(tok.pos + tok.len, le) - ls
+						if a > col {
+							gap := line[col:a]
+							render.push_text(&queue, gap, origin + render.font_width(line[:col]), baseline, editor.settings.text)
+							col = a
+						}
+						if b > col {
+							piece := line[col:b]
+							render.push_text(&queue, piece, origin + render.font_width(line[:col]), baseline, editor.token_color(tok.kind))
+							col = b
+						}
+					}
+					if col < len(line) {
+						rest := line[col:]
+						render.push_text(&queue, rest, origin + render.font_width(line[:col]), baseline, editor.settings.text)
+					}
 				}
+		
+				// for i in first ..< last {
+				// 	line := text.buffer_line_clone(&db.doc, i)
+				// 	defer delete(line)
+				// 	y := line_top(dv, dtr, i, lh)
+				// 	render.push_text(&queue, line, dtr.x - dv.scroll_x, y + render.the_font.ascent, editor.settings.text)
+				// }
 	
 				line_i := text.buffer_line_at(&db.doc, dv.cursor)
 				line_start := text.buffer_line_start(&db.doc, line_i)
@@ -504,7 +548,9 @@ main :: proc() {
 						render.push_text(&queue, preview, cx, baseline, editor.settings.ime_preview)
 						cx += render.font_width(preview)
 					}
-					platform.ime_set_pos(&window, i32(cx), i32(cy + lh))
+					if window.ime_preview_len > 0 {
+						platform.ime_set_pos(&window, i32(cx), i32(cy + lh))
+					}
 					if caret_on || window.ime_preview_len > 0 {
 						render.push_quad(&queue, {cx, cy}, {editor.settings.caret_w, lh}, editor.settings.caret)
 					}

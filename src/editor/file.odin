@@ -10,6 +10,8 @@ editor_set_path :: proc(ed: ^Editor, path: string) {
     b := active_buffer(ed)
     delete(b.path)
     b.path = strings.clone(path)
+    b.lex_id = lex_index_from_path(b.path)
+    b.lex_dirty = true
 }
 
 editor_load_path :: proc(ed: ^Editor, path: string) -> bool {
@@ -50,6 +52,7 @@ editor_load_path :: proc(ed: ^Editor, path: string) -> bool {
     text.buffer_insert(&b.doc, 0, string(cleaned))
     b.newline = nl
     b.scroll_x_dirty = true
+    b.lex_dirty = true
     undo_reset(ed)
     editor_set_path(ed, path)
     set_cursor(ed, 0, false)
@@ -80,13 +83,15 @@ editor_save :: proc(ed: ^Editor) -> bool {
         }
         crlf = make([]u8, len(s) + extra)
         j := 0
-        for ch in s {
-            if ch == '\n' {
+        for i in 0 ..< len(s) {
+            if s[i] == '\n' {
                 crlf[j] = '\r'
                 j += 1
             }
+            crlf[j] = s[i]
+            j += 1
         }
-        out = string(crlf)
+        out = string(crlf[:j])
     }
     defer if len(crlf) > 0 {
         delete(crlf)
