@@ -14,7 +14,10 @@ Token_Kind :: enum {
     String,
     Comment,
     Punct,
+    Operator,
     Directive,
+    Function,
+    Type
 }
 
 Token :: struct {
@@ -396,6 +399,124 @@ lex_eat_op :: proc(doc: ^text.Buffer, i: int, ops: []string) -> int {
 	return 0
 }
 
+lex_hspace :: proc(doc: ^text.Buffer, t: Token) -> bool {
+	if t.kind != .Punct || t.len == 0 { return false }
+	for k in 0 ..< t.len {
+		c := lex_at(doc, t.pos + k)
+		if c != ' ' && c != '\t' {
+			return false
+		}
+	}
+	return true
+}
+
+lex_token_is :: proc(doc: ^text.Buffer, t: Token, s: string) -> bool {
+	if t.len != len(s) {
+		return false
+	}
+	return lex_match(doc, t.pos, s)
+}
+
+lex_next_sig :: proc(doc: ^text.Buffer, toks: []Token, i: int) -> int {
+	j := i + 1
+	for j < len(toks) && (toks[j].kind == .Comment || lex_hspace(doc, toks[j])) {
+		j += 1
+	}
+	if j < len(toks) {
+		return j
+	}
+	return -1
+}
+
+lex_is_type_keyword :: proc(doc: ^text.Buffer, t: Token) -> bool {
+	return lex_token_is(doc, t, "struct") ||
+		lex_token_is(doc, t, "enum") ||
+
+        lex_token_is(doc, t, "union") ||
+
+        lex_token_is(doc, t, "bit_set") ||
+
+        lex_token_is(doc, t, "bit_field") ||
+
+        lex_token_is(doc, t, "distinct")
+}
+
+lex_tag_names :: proc(b: ^Buffer) {
+    doc := &b.doc
+    funcs := make([dynamic]string)
+    types := make([dynamic]string)
+    defer {
+        for s in funcs {
+            delete(s)
+        }
+        delete(funcs)
+        for s in types {
+            delete(s)
+        }
+        delete(types)
+    }
+    for i in 0 ..< len(b.tokens) {
+        t := b.tokens[i]
+        if t.kind != .Ident { continue }
+        j := lex_next_sig(doc, b.tokens[:], i)
+        if j < 0 { continue }
+        op := b.tokens[j]
+        if op.kind != .Operator { continue }
+        if !lex_token_is(doc, op, "::") && !lex_token_is(doc, op, ":=") {
+            continue
+        }
+        k := lex_next_sig(doc, b.tokens[:], j)
+        for k >= 0 && b.tokens[k].kind == .Directive {
+            k = lex_next_sig(doc, b.tokens[:], k)
+        }
+        if k < 0 || b.tokens[k].kind != .Keyword {
+            continue
+        }
+        kw := b.tokens[k]
+        kind: Token_Kind = .Ident
+        if lex_token_is(doc, kw, "proc") {
+            kind = .Function
+        } else if lex_is_type_keyword(doc, kw) {
+            kind = .Type
+        }
+        if kind == .Ident { continue }
+        b.tokens[i].kind = kind
+        name := text.buffer_clone_range(doc, t.pos, t.len)
+        if kind == .Function {
+            append(&funcs, name)
+        } else {
+            append(&types, name)
+        }
+    }
+    for i in 0 ..< len(b.tokens) {
+        t := b.tokens[i]
+        if t.kind != .Ident { continue }
+        j := lex_next_sig(doc, b.tokens[:], i)
+        if j >= 0 && b.tokens[j].kind == .Punct && lex_token_is(doc, b.tokens[j], "(") {
+            b.tokens[i].kind = .Function
+            continue
+        }
+        hit: Token_Kind = .Ident
+        for name in types {
+            if lex_token_is(doc, t, name) {
+                hit = .Type
+                break
+            }
+        }
+        if hit == .Ident {
+            for name in funcs {
+                if lex_token_is(doc, t, name) {
+                    hit = .Function
+                    break
+                }
+            }
+        }
+        if hit != .Ident {
+            b.tokens[i].kind = hit
+        }
+    }
+}
+
 buffer_lex :: proc(b: ^Buffer) {
     clear(&b.tokens)
     doc := &b.doc
@@ -469,12 +590,13 @@ buffer_lex :: proc(b: ^Buffer) {
             kind = .Directive
         } else if n := lex_eat_op(doc, i, ops); n > 0 {
             i += n
-            kind = .Punct
+            kind = .Operator
         } else {
             i += 1
         }
         append(&b.tokens, Token{kind = kind, pos = start, len = i - start})
     }
+    lex_tag_names(b)
     b.lex_dirty = false
 }
 
@@ -485,7 +607,11 @@ token_color :: proc(kind: Token_Kind) -> [4]f32 {
         case .String:  return settings.lit_string
         case .Number:  return settings.lit_number
         case .Ident, .Punct: return settings.text
+        case .Operator: return settings.operator
         case .Directive: return settings.directive
+        case .Function:  return settings.function_name
+
+		case .Type:     return settings.type_name
     }
     return settings.text
 }

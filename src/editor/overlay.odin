@@ -13,10 +13,13 @@ overlay_open :: proc(ed: ^Editor, kind: Overlay_Kind) {
     clear(&ed.overlay.text)
     ed.overlay.cursor = 0
     ed.overlay.kind = kind
+    ed.overlay.sel = 0
+    ed.overlay.scroll = 0
 }
 
 overlay_close :: proc(ed: ^Editor) {
     clear(&ed.overlay.text)
+    picker_clear(ed)
     ed.overlay.cursor = 0
     ed.overlay.kind = .None
 }
@@ -36,6 +39,10 @@ overlay_insert_rune :: proc(ed: ^Editor, r: rune) {
         } else {
             ed.overlay.sel = clamp(ed.overlay.sel, 0, n - 1)
         }
+    }
+
+    if ed.overlay.kind == .Files {
+        picker_clamp_sel(ed)
     }
 }
 
@@ -59,6 +66,10 @@ overlay_backspace :: proc(ed: ^Editor) {
             ed.overlay.sel = clamp(ed.overlay.sel, 0, n - 1)
         }
     }
+
+    if ed.overlay.kind == .Files {
+        picker_clamp_sel(ed)
+    }
 }
 
 overlay_key :: proc(ed: ^Editor, key: platform.Key, mods: platform.Mods) {
@@ -66,7 +77,11 @@ overlay_key :: proc(ed: ^Editor, key: platform.Key, mods: platform.Mods) {
     #partial switch key {
         case .Escape:
         {
-            overlay_close(ed)
+	        if o.kind == .New_File && len(o.rename_from) > 0 {
+		        create_stop_rename(ed)
+	        } else {
+            	overlay_close(ed)
+			}
         }
         case .Backspace:
         {
@@ -74,30 +89,47 @@ overlay_key :: proc(ed: ^Editor, key: platform.Key, mods: platform.Mods) {
         }
         case .Left:
         {
-            if o.cursor > 0 {
+        	if o.kind == .New_File && len(o.rename_from) == 0 {
+        		create_up(ed)
+        	} else if o.cursor > 0 {
                 _, size := utf8.decode_last_rune(string(o.text[:o.cursor]))
                 o.cursor -= max(size, 1)
             }
         }
         case .Right:
         {
-            if o.cursor < len(o.text) {
+        	if o.kind == .New_File && len(o.rename_from) == 0 {
+        		create_into(ed)
+        	} else if o.kind == .New_File && o.cursor < len(o.text) {
                 _, size := utf8.decode_last_rune(string(o.text[:o.cursor]))
                 o.cursor += max(size, 1)
+            } else if o.cursor < len(o.text) {
+	            _, size := utf8.decode_last_rune(string(o.text[:o.cursor]))
+	            o.cursor += max(size, 1)
             }
         }
         case .Up:
         {
-            if o.kind == .Switcher && o.sel > 0 {
+            if (o.kind == .Switcher || o.kind == .Files || o.kind == .New_File) && o.sel > 0 {
                 o.sel -= 1
+                o.preview_sel = -1
             }
         }
         case .Down:
         {
-            if o.kind == .Switcher {
-                n := switcher_match_count(ed, string(o.text[:]))
+            if (o.kind == .Switcher || o.kind == .Files || o.kind == .New_File) {
+                n := 0
+                if o.kind == .Switcher {
+                    n = switcher_match_count(ed, string(o.text[:]))
+                } else if o.kind == .New_File {
+                	n = len(o.files)
+                } else {
+                    n = picker_match_count(ed, string(o.text[:]))
+                }
+
                 if o.sel + 1 < n {
                     o.sel += 1
+                    o.preview_sel = -1
                 }
             }
         }
@@ -107,6 +139,14 @@ overlay_key :: proc(ed: ^Editor, key: platform.Key, mods: platform.Mods) {
                 find_next(ed)
             } else if o.kind == .Switcher {
                 switcher_accept(ed)
+            } else if o.kind == .Files {
+                picker_accept(ed)
+            } else if o.kind == .New_File {
+            	if len(o.rename_from) > 0 {
+	             	create_rename_accept(ed)
+	             } else {
+					create_accept(ed)
+				}
             }
         }
         case .F:
@@ -114,6 +154,18 @@ overlay_key :: proc(ed: ^Editor, key: platform.Key, mods: platform.Mods) {
             if .Ctrl in mods {
                 find_next(ed)
             }
+        }
+        case .R:
+        {
+        	if .Ctrl in mods && o.kind == .New_File {
+         		create_rename_begin(ed)
+         	}
+        }
+        case .D:
+        {
+        	if .Ctrl in mods && o.kind == .New_File {
+	        	create_delete(ed)
+	        }
         }
     }
 }
@@ -181,7 +233,40 @@ find_next :: proc(ed: ^Editor) {
     set_cursor(ed, pos + len(q), true)
 }
 
+switcher_line :: proc(query: string) -> (line: int, ok: bool) {
+	s := lex_trim(query)
+	if len(s) == 0 { return }
+	for i in 0 ..< len(s) {
+		if s[i] < '0' || s[i] > '9' { return }
+	}
+	n := 0
+	for i in 0 ..< len(s) {
+		n = n * 10 + int(s[i] - '0')
+		if n > 1_000_000_000 {
+			n = 1_000_000_000
+			break
+		}
+	}
+	if n <= 0 { return }
+	return n, true
+}
+
+switcher_goto_line :: proc(ed: ^Editor, line: int) {
+	b := active_buffer(ed)
+	n := text.buffer_line_count(&b.doc)
+	if n <= 0 {
+		overlay_close(ed)
+		return
+	}
+	i := clamp(line, 1, n) - 1
+	set_cursor(ed, text.buffer_pos_at_line(&b.doc, i, 0), false)
+	overlay_close(ed)
+}
+
 switcher_match_count :: proc(ed:^ Editor, query: string) -> int {
+	if _, ok := switcher_line(query); ok {
+		return 1
+	}
     n := 0
     for &b in ed.buffers {
         name := buffer_display_name(&b)
@@ -194,6 +279,10 @@ switcher_match_count :: proc(ed:^ Editor, query: string) -> int {
 
 switcher_accept :: proc(ed: ^Editor) {
     query := string(ed.overlay.text[:])
+    if line, ok := switcher_line(query); ok {
+    	switcher_goto_line(ed, line)
+    	return
+    }
     row := 0
     for i in 0 ..< len(ed.buffers) {
         name := buffer_display_name(&ed.buffers[i])

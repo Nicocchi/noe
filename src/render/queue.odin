@@ -117,6 +117,18 @@ push_quads :: proc(q: ^Render_Queue, quads: []Quad) -> bool {
     return true
 }
 
+push_border :: proc(q: ^Render_Queue, pos, size: [2]f32, t: f32, color: [4]f32) -> bool {
+	if t <= 0 || size.x <= 0 || size.y <= 0 {
+		return true
+	}
+	t := min(t, size.x * 0.5, size.y * 0.5)
+	ok := push_quad(q, pos, {size.x, t}, color)
+    ok &= push_quad(q, {pos.x, pos.y + size.y - t}, {size.x, t}, color)
+    ok &= push_quad(q, pos, {t, size.y}, color)
+    ok &= push_quad(q, {pos.x + size.x - t, pos.y}, {t, size.y}, color)
+	return ok
+}
+
 push_clip :: proc(q: ^Render_Queue, pos, rect_size: [2]f32) -> bool {
     bytes := align_forward(size_of(Entry_Clip), ALIGN)
     ptr := queue_alloc(q, bytes)

@@ -32,6 +32,7 @@ Font :: struct {
     pack_y:         int,
     pack_row_h:     int,
     ascent:         f32,
+    descent:		f32,
     line_height:    f32
 }
 
@@ -51,6 +52,7 @@ font_init :: proc(path: string) -> bool {
     tt.GetFontVMetrics(&the_font.faces[0].info, &a, &d, &g)
     s := the_font.faces[0].scale
     the_font.ascent = f32(a) * s
+    the_font.descent = f32(d) * s
     the_font.line_height = f32(a - d + g) * s
     return true
 }
@@ -113,6 +115,10 @@ font_width :: proc(s: string) -> f32 {
 
 font_ascent :: proc() -> f32 {
     return the_font.ascent
+}
+
+font_descent :: proc() -> f32 {
+	return the_font.descent
 }
 
 font_add_face :: proc(path: string, ttc_index: i32 = 0) -> bool {

@@ -178,15 +178,16 @@ cmd_file_open :: proc(ed: ^Editor) {
         return
     }
     defer delete(path)
-    for i in 0 ..< len(ed.buffers) {
-        if ed.buffers[i].path == path {
-            view_show_buffer(ed, i)
-            return
-        }
-    }
-    append(&ed.buffers, Buffer{scroll_x_dirty = true})
-    active_view(ed).buf_id = len(ed.buffers) - 1
-    _ = editor_load_path(ed, path)
+    view_open_path(ed, path)
+    // for i in 0 ..< len(ed.buffers) {
+    //     if ed.buffers[i].path == path {
+    //         view_show_buffer(ed, i)
+    //         return
+    //     }
+    // }
+    // append(&ed.buffers, Buffer{scroll_x_dirty = true})
+    // active_view(ed).buf_id = len(ed.buffers) - 1
+    // _ = editor_load_path(ed, path)
 }
 
 cmd_file_save :: proc(ed: ^Editor) {

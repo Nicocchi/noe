@@ -2,6 +2,7 @@ package main
 
 import "core:fmt"
 import "core:time"
+import "core:math"
 import "core:strings"
 import "platform"
 import "render"
@@ -24,7 +25,13 @@ pos_at_xy :: proc(v: ^editor.View, b: ^editor.Buffer, pane: editor.Rect, x, y: f
 }
 
 line_top :: proc(v: ^editor.View, pane: editor.Rect, line: int, lh: f32) -> f32 {
-	return pane.y + f32(line) * lh - v.scroll_y
+	y := pane.y + f32(line) * lh - v.scroll_y
+	return math.round(y)
+}
+
+line_baseline :: proc(top, lh: f32) -> f32 {
+	em := render.font_ascent() - render.font_descent()
+	return math.round(top + (lh - em) * 0.5 + render.font_ascent())
 }
 
 max_scroll_y :: proc(ed: ^editor.Editor, lh: f32) -> f32 {
@@ -107,6 +114,7 @@ main :: proc() {
 
 	ed: editor.Editor
 	editor.editor_init(&ed, "")
+	opened := editor.startup_dir()
 	editor.script_init(&ed)
 	editor.active_buffer(&ed).lex_id = editor.lex_index_named("odin")
 	editor.active_buffer(&ed).lex_dirty = true
@@ -126,6 +134,9 @@ main :: proc() {
 	render.tab_spaces = f32(editor.settings.tab_width)
 	render.tofu = editor.settings.tofu
 	ed.host = &window
+	if opened {
+		editor.picker_open(&ed)
+	}
 	editor.editor_update_title(&ed)
 	window.needs_redraw = true
 	last_input := time.tick_now()
@@ -167,7 +178,7 @@ main :: proc() {
 				_ = apply_font(live_path, live_fallback, live_size)
 			}
 		}
-		
+
 		v := editor.active_view(&ed)
 		b := editor.active_buffer(&ed)
 		lh_page := render.font_line_height()
@@ -268,7 +279,7 @@ main :: proc() {
 					split_hit.x -= 3
 					split_hit.w += 6
 
-					if ev.action == .Down {
+					if ev.action == .Down || ev.action == .Double {
 						if lay.view_count == 2 && editor.rect_contains(split_hit, ev.x, ev.y) {
 							splitting = true
 							dragging = false
@@ -278,11 +289,13 @@ main :: proc() {
 							break
 						}
 						ed.active_view = hit
-						dragging = true
+						dragging = ev.action == .Down
 						pv := editor.active_view(&ed)
 						pb := editor.active_buffer(&ed)
 						pos := pos_at_xy(pv, pb, lay.views[ed.active_view].text, ev.x, ev.y)
-						if .Shift in ev.mods {
+						if ev.action == .Double {
+							editor.select_word_at(&ed, pos)
+						} else if .Shift in ev.mods {
 							editor.drag_to(&ed, pos)
 						} else {
 							editor.click_at(&ed, pos)
@@ -341,7 +354,7 @@ main :: proc() {
 			}
 		}
 		platform.events_clear(&window)
-		lay = editor.layout_compute(f32(window.width), f32(window.height), 
+		lay = editor.layout_compute(f32(window.width), f32(window.height),
 			lh_page, gutter_w, status_h, len(ed.views), ed.split_t)
 		sr = lay.status
 		v = editor.active_view(&ed)
@@ -360,7 +373,7 @@ main :: proc() {
 			}
 		}
 		platform.window_set_cursor(&window, cur)
-		
+
 		if had_events {
 			last_input = time.tick_now()
 			caret_on = true
@@ -369,7 +382,7 @@ main :: proc() {
 
 		if follow {
 			lh := render.font_line_height()
-			
+
 			line_i := text.buffer_line_at(&b.doc, v.cursor)
 			ls := text.buffer_line_start(&b.doc, line_i)
 			line := text.buffer_line_clone(&b.doc, line_i)
@@ -395,10 +408,10 @@ main :: proc() {
 
 		if window.needs_redraw {
 			window.needs_redraw = false
-			
+
 			render.queue_reset(&queue)
 			render.push_clear(&queue, editor.settings.bg)
-	
+
 			lh := render.font_line_height()
 
 			// Pan divider
@@ -415,13 +428,13 @@ main :: proc() {
 					)
 				}
 			}
-			
+
 			for vi in 0 ..< lay.view_count {
 				dv := &ed.views[vi]
 				db := &ed.buffers[dv.buf_id]
 				dtr := lay.views[vi].text
 				dgr := lay.views[vi].gutter
-				
+
 				n_lines := text.buffer_line_count(&db.doc)
 				first := 0
 				last := n_lines
@@ -447,14 +460,20 @@ main :: proc() {
 						if i == cur_line {
 							color = editor.settings.gutter_current
 						}
-						render.push_text(&queue, label, x, y + render.the_font.ascent, color)
+						render.push_text(&queue, label, x, line_baseline(y, lh), color)
 					}
 					render.push_clip_disabled(&queue)
 				}
-	
+
 				// Text area
 				head := max(editor.settings.text_pad_y, 2)
 				render.push_clip(&queue, {dtr.x, dtr.y - head}, {dtr.w, dtr.h + head})
+				
+				cur := text.buffer_line_at(&db.doc, dv.cursor)
+				if cur >= first && cur < last {
+					y := line_top(dv, dtr, cur, lh)
+					render.push_quad(&queue, {dtr.x, y}, {dtr.w, lh}, editor.settings.current_line)
+				}
 
 				sel := editor.settings.selection
 				for pass in 0 ..< 1 + len(dv.extras) {
@@ -497,7 +516,7 @@ main :: proc() {
 					ls := text.buffer_line_start(&db.doc, i)
 					le := text.buffer_line_end(&db.doc, i)
 					y := line_top(dv, dtr, i, lh)
-					baseline := y + render.the_font.ascent
+					baseline := line_baseline(y, lh)
 					origin := dtr.x - dv.scroll_x
 					col := 0
 					for t in 0 ..< len(db.tokens) {
@@ -526,14 +545,7 @@ main :: proc() {
 						render.push_text(&queue, rest, origin + render.font_width(line[:col]), baseline, editor.settings.text)
 					}
 				}
-		
-				// for i in first ..< last {
-				// 	line := text.buffer_line_clone(&db.doc, i)
-				// 	defer delete(line)
-				// 	y := line_top(dv, dtr, i, lh)
-				// 	render.push_text(&queue, line, dtr.x - dv.scroll_x, y + render.the_font.ascent, editor.settings.text)
-				// }
-	
+
 				line_i := text.buffer_line_at(&db.doc, dv.cursor)
 				line_start := text.buffer_line_start(&db.doc, line_i)
 				line := text.buffer_line_clone(&db.doc, line_i)
@@ -541,7 +553,7 @@ main :: proc() {
 				prefix := line[:min(dv.cursor - line_start, len(line))]
 				cx := dtr.x + render.font_width(prefix) - dv.scroll_x
 				cy := line_top(dv, dtr, line_i, lh)
-				baseline := cy + render.font_ascent()
+				baseline := line_baseline(cy, lh)
 				if vi == ed.active_view {
 					if window.ime_preview_len > 0 {
 						preview := string(window.ime_preview[:window.ime_preview_len])
@@ -609,49 +621,315 @@ main :: proc() {
 				if ed.overlay.kind == .Switcher {
 					ov.h = lh * f32(editor.settings.overlay_rows)
 				}
-				render.push_clip(&queue, {ov.x, ov.y}, {ov.w, ov.h})
-				render.push_quad(&queue, {ov.x, ov.y}, {ov.w, ov.h}, editor.settings.overlay_bg)
-				label := "Find: "
-				if ed.overlay.kind == .Switcher {
-					label = "Buffer: "
-				}
-				lx := ov.x + 8
-				ly := ov.y + render.font_ascent() + 8
-				render.push_text(&queue, label, lx, ly, editor.settings.overlay_label)
-				lx += render.font_width(label)
-				q := string(ed.overlay.text[:])
-				render.push_text(&queue, q, lx, ly, editor.settings.text)
-				prefix := string(ed.overlay.text[:ed.overlay.cursor])
-				cx := lx + render.font_width(prefix)
-				cy := ov.y + 8
-				if caret_on {
-					render.push_quad(&queue, {cx, cy}, {editor.settings.caret_w, lh}, editor.settings.caret)
+				if ed.overlay.kind == .Files || ed.overlay.kind == .New_File {
+					ov.w = f32(window.width) * 0.8
+					ov.h = f32(window.height) * 0.7
+					ov.x = (f32(window.width) - ov.w) * 0.5
+					ov.y = (f32(window.height) - ov.h) * 0.5
 				}
 
-				if ed.overlay.kind == .Switcher {
-					qy := ly + lh
-					row := 0
+				fill := editor.settings.overlay_bg
+				if ed.overlay.kind == .Files {
+					fill = editor.settings.bg
+				}
+				render.push_quad(&queue, {ov.x, ov.y}, {ov.w, ov.h}, fill)
+
+				bw := editor.settings.overlay_border
+				bc := editor.settings.overlay_border_color
+				if ed.overlay.kind != .Files {
+					render.push_quad(&queue, {ov.x, ov.y}, {ov.w, ov.h}, editor.settings.bg)
+					render.push_border(&queue, {ov.x, ov.y}, {ov.w, ov.h}, bw, bc)
+				}
+
+				if ed.overlay.kind == .Files {
+					editor.picker_sync_preview(&ed)
+					pad := editor.settings.overlay_pad
+					g := editor.settings.overlay_gap
+					input_h := lh + pad * 2
+					left_w := (ov.w - g) * 0.42
+					list := editor.Rect{ov.x, ov.y, left_w, ov.h - input_h - g}
+					box  := editor.Rect{ov.x, ov.y + list.h + g, left_w, input_h}
+					prev := editor.Rect{ov.x + left_w + g, ov.y, ov.w - left_w - g, ov.h}
+
+					render.push_quad(&queue, {list.x, list.y}, {list.w, list.h}, editor.settings.bg)
+					render.push_quad(&queue, {box.x, box.y}, {box.w, box.h}, editor.settings.bg)
+					render.push_quad(&queue, {prev.x, prev.y}, {prev.w, prev.h}, editor.settings.bg)
+
+					render.push_border(&queue, {list.x, list.y}, {list.w, list.h}, bw, bc)
+					render.push_border(&queue, {box.x, box.y}, {box.w, box.h}, bw, bc)
+					render.push_border(&queue, {prev.x, prev.y}, {prev.w, prev.h}, bw, bc)
+
+					render.push_clip(&queue, {ov.x, ov.y}, {ov.w, ov.h})
+
 					query := string(ed.overlay.text[:])
-					for i in 0 ..< len(ed.buffers) {
-						name := editor.buffer_display_name(&ed.buffers[i])
-						if len(query) != 0 && !strings.contains(name, query) {
+					vis := max(int(list.h / lh), 1)
+					if ed.overlay.sel < ed.overlay.scroll {
+						ed.overlay.scroll = ed.overlay.sel
+					}
+					if ed.overlay.sel >= ed.overlay.scroll + vis {
+						ed.overlay.scroll = ed.overlay.sel - vis + 1
+					}
+
+					render.push_clip(&queue, {list.x, list.y}, {list.w, list.h})
+					row := 0
+					drawn := 0
+					for p in ed.overlay.files {
+						rel := editor.picker_rel(ed.overlay.root, p)
+						if !editor.fuzzy_match(rel, query) {
 							continue
 						}
-						color: [4]f32 = editor.settings.overlay_list
+						if row < ed.overlay.scroll {
+							row += 1
+							continue
+						}
+						if drawn >= vis {
+							break
+						}
+						row_y := math.round(list.y + pad + f32(drawn) * lh)
+						qy := line_baseline(row_y, lh)
+						color := editor.settings.text
 						if row == ed.overlay.sel {
-							render.push_quad(&queue, {ov.x, qy - render.font_ascent()}, {ov.w, lh}, editor.settings.selection)
+							render.push_quad(&queue, {list.x, row_y}, {list.w, lh}, editor.settings.overlay_sel_bg)
 							color = editor.settings.overlay_sel_fg
 						}
-						render.push_text(&queue, name, ov.x + 8, qy, color)
-						qy += lh
+						render.push_text(&queue, rel, list.x + 8, qy, color)
+						drawn += 1
 						row += 1
+					}
+					render.push_clip(&queue, {ov.x, ov.y}, {ov.w, ov.h})
+
+					lx := box.x + 8
+					caret_y := math.round(box.y + (box.h - lh) * 0.5)
+					ly := line_baseline(caret_y, lh)
+					render.push_text(&queue, "> ", lx, ly, editor.settings.overlay_label)
+					lx += render.font_width("> ")
+					render.push_text(&queue, query, lx, ly, editor.settings.text)
+					prefix := string(ed.overlay.text[:ed.overlay.cursor])
+					cx := lx + render.font_width(prefix)
+					if caret_on {
+						render.push_quad(&queue, {cx, caret_y}, {editor.settings.caret_w, lh}, editor.settings.caret)
+					}
+
+					render.push_clip(&queue, {prev.x, prev.y}, {prev.w, prev.h})
+					top := math.round(prev.y + pad)
+
+					py := line_baseline(top, lh)
+					src := string(ed.overlay.preview)
+					if len(src) == 0 {
+						render.push_text(&queue, "(no preview)", prev.x + 8, py, editor.settings.overlay_label)
+					} else {
+						start := 0
+						for i in 0 ..= len(src) {
+							if i < len(src) && src[i] != '\n' {
+								continue
+							}
+							line := src[start:i]
+							if len(line) > 0 && line[len(line) - 1] == '\r' {
+								line = line[:len(line) - 1]
+							}
+							ls := start
+							le := start + len(line)
+							origin := prev.x + 8
+							col := 0
+							for t in 0 ..< len(ed.overlay.preview_tokens) {
+								tok := ed.overlay.preview_tokens[t]
+								if tok.pos + tok.len <= ls {
+									continue
+								}
+								if tok.pos >= le {
+									break
+								}
+								a := max(tok.pos, ls) - ls
+								b := min(tok.pos + tok.len, le) - ls
+								if a > col {
+									render.push_text(&queue, line[col:a], origin + render.font_width(line[:col]), py, editor.settings.text)
+									col = a
+								}
+								if b > col {
+									render.push_text(&queue, line[col:b], origin + render.font_width(line[:col]), py, editor.token_color(tok.kind))
+									col = b
+								}
+							}
+							if col < len(line) {
+								render.push_text(&queue, line[col:], origin + render.font_width(line[:col]), py, editor.settings.text)
+							}
+							top += lh
+							py = line_baseline(top, lh)
+							if py > prev.y + prev.h {
+								break
+							}
+							start = i + 1
+						}
+					}
+					render.push_clip(&queue, {ov.x, ov.y}, {ov.w, ov.h})
+				} else if ed.overlay.kind == .New_File {
+					pad := editor.settings.overlay_pad
+					g := editor.settings.overlay_gap
+					input_h := lh + pad * 2
+					list := editor.Rect{ov.x, ov.y, ov.w, ov.h - input_h - g}
+					box := editor.Rect{ov.x, ov.y + list.h + g, ov.w, input_h}
+					render.push_quad(&queue, {list.x, list.y}, {list.w, list.h}, editor.settings.bg)
+					render.push_quad(&queue, {box.x, box.y}, {box.w, box.h}, editor.settings.bg)
+					
+					render.push_border(&queue, {list.x, list.y}, {list.w, list.h}, bw, bc)
+					render.push_border(&queue, {box.x, box.y}, {box.w, box.h}, bw, bc)
+					render.push_clip(&queue, {ov.x, ov.y}, {ov.w, ov.h})
+
+					here := editor.picker_rel(ed.overlay.root, ed.overlay.browse)
+					if len(here) == 0 { here = "." }
+					render.push_text(&queue, here, list.x + 8, line_baseline(math.round(list.y + pad), lh), editor.settings.overlay_label)
+
+					vis := max(int((list.h - lh) / lh), 1)
+					if ed.overlay.sel < ed.overlay.scroll {
+						ed.overlay.scroll = ed.overlay.sel
+					}
+					if ed.overlay.sel >= ed.overlay.scroll + vis {
+						ed.overlay.scroll = ed.overlay.sel - vis + 1
+					}
+					render.push_clip(&queue, {list.x, list.y + lh}, {list.w, list.h - lh})
+					drawn := 0
+					for row in 0 ..< len(ed.overlay.files) {
+						if row < ed.overlay.scroll { continue }
+						if drawn >= vis { break }
+						name := editor.picker_rel(ed.overlay.browse, ed.overlay.files[row])
+						label := name
+						if ed.overlay.entry_dir[row] {
+							label = fmt.tprintf("%s/", name)
+						}
+						row_y := math.round(list.y + lh + pad + f32(drawn) * lh)
+
+						qu := line_baseline(row_y, lh)
+
+						color := editor.settings.text
+
+						if ed.overlay.entry_dir[row] {
+
+							color = editor.settings.overlay_label
+
+						}
+
+						if row == ed.overlay.sel {
+
+							render.push_quad(&queue, {list.x, row_y}, {list.w, lh}, editor.settings.overlay_sel_bg)
+							color = editor.settings.overlay_sel_fg
+						}
+						render.push_text(&queue, label, list.x + 8, qu, color)
+						drawn += 1
+					}
+					render.push_clip(&queue, {ov.x, ov.y}, {ov.w, ov.h})
+
+					lx := box.x + 8
+					caret_y := math.round(box.y + (box.h - lh) * 0.5)
+
+					ly := line_baseline(caret_y, lh)
+					mark := "> "
+					if len(ed.overlay.rename_from) > 0 {
+						mark = "rename: "
+					}
+					render.push_text(&queue, mark, lx, ly, editor.settings.overlay_label)
+					lx += render.font_width(mark)
+					query := string(ed.overlay.text[:])
+					render.push_text(&queue, query, lx, ly, editor.settings.text)
+					prefix := string(ed.overlay.text[:ed.overlay.cursor])
+					cx := lx + render.font_width(prefix)
+					if caret_on {
+						render.push_quad(&queue, {cx, caret_y}, {editor.settings.caret_w, lh}, editor.settings.caret)
+					}
+
+				} else {
+					label := "Find: "
+					if ed.overlay.kind == .Switcher {
+						label = "Command: "
+					}
+					lx := ov.x + 8
+
+					cy := math.round(ov.y + 8)
+
+					ly := line_baseline(cy, lh)
+
+					render.push_text(&queue, label, lx, ly, editor.settings.overlay_label)
+
+					lx += render.font_width(label)
+
+					q := string(ed.overlay.text[:])
+
+					render.push_text(&queue, q, lx, ly, editor.settings.text)
+
+					prefix := string(ed.overlay.text[:ed.overlay.cursor])
+
+					cx := lx + render.font_width(prefix)
+
+					if caret_on {
+
+						render.push_quad(&queue, {cx, cy}, {editor.settings.caret_w, lh}, editor.settings.caret)
+
+					}
+
+					if ed.overlay.kind == .Switcher {
+
+						row_top := cy + lh
+
+						row := 0
+
+						query := string(ed.overlay.text[:])
+
+						if line, ok := editor.switcher_line(query); ok {
+
+							n := text.buffer_line_count(&editor.active_buffer(&ed).doc)
+
+							shown := line
+
+							if n > 0 {
+
+								shown = clamp(line, 1, n)
+
+							}
+
+							label := fmt.tprintf("Line %d", shown)
+
+							render.push_quad(&queue, {ov.x, row_top}, {ov.w, lh}, editor.settings.overlay_sel_bg)
+
+							render.push_text(&queue, label, ov.x + 8, line_baseline(row_top, lh), editor.settings.overlay_sel_fg)
+
+						} else {
+
+							for i in 0 ..< len(ed.buffers) {
+
+								name := editor.buffer_display_name(&ed.buffers[i])
+
+								if len(query) != 0 && !strings.contains(name, query) {
+
+									continue
+
+								}
+
+								color: [4]f32 = editor.settings.overlay_list
+
+								if row == ed.overlay.sel {
+
+									render.push_quad(&queue, {ov.x, row_top}, {ov.w, lh}, editor.settings.overlay_sel_bg)
+
+									color = editor.settings.overlay_sel_fg
+
+								}
+
+								render.push_text(&queue, name, ov.x + 8, line_baseline(row_top, lh), color)
+
+								row_top += lh
+
+								row += 1
+
+							}
+
+						}
+
 					}
 				}
 
 				render.push_clip_disabled(&queue)
 			}
-	
-	
+
+
 			backend.begin_frame()
 			backend.execute(&queue)
 			backend.end_frame()

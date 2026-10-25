@@ -42,6 +42,7 @@ script_init_path :: proc() -> (path: string, ok: bool) {
 
 script_init :: proc(ed: ^Editor) {
     lex_load_all()
+    project_load(ed)
     script_ctx = context
     L := lua.L_newstate()
     if L == nil {
@@ -181,7 +182,11 @@ lua_api_set :: proc "c" (L: ^lua.State) -> c.int {
             settings.bg = lua_read_color(L)
         }
         case "text":            settings.text = lua_read_color(L)
-        case "selection":       settings.selection = lua_read_color(L)
+        case "selection":
+        {
+        	settings.selection = lua_read_color(L)
+        	settings.overlay_sel_bg = settings.selection
+        }
         case "caret":           settings.caret = lua_read_color(L)
         case "caret_inactive":  settings.caret_inactive = lua_read_color(L)
         case "gutter":          settings.gutter = lua_read_color(L)
@@ -193,12 +198,17 @@ lua_api_set :: proc "c" (L: ^lua.State) -> c.int {
         case "overlay_label":   settings.overlay_label = lua_read_color(L)
         case "overlay_list":    settings.overlay_list = lua_read_color(L)
         case "overlay_sel_fg":  settings.overlay_sel_fg = lua_read_color(L)
+        case "overlay_sel_bg":  settings.overlay_sel_bg = lua_read_color(L)
         case "ime_preview":     settings.ime_preview = lua_read_color(L)
         case "keyword":         settings.keyword = lua_read_color(L)
         case "comment":         settings.comment = lua_read_color(L)
         case "string":          settings.lit_string = lua_read_color(L)
         case "number":          settings.lit_number = lua_read_color(L)
+        case "operator":        settings.operator = lua_read_color(L)
         case "directive":       settings.directive = lua_read_color(L)
+        case "function":        settings.function_name = lua_read_color(L)
+        case "type":            settings.type_name = lua_read_color(L)
+        case "current_line":    settings.current_line = lua_read_color(L)
         case "gutter_min_digits":
         {
             settings.gutter_min_digits = max(int(lua.L_checkinteger(L, 2)), 1)
@@ -262,6 +272,18 @@ lua_api_set :: proc "c" (L: ^lua.State) -> c.int {
         case "overlay_pad":
         {
             settings.overlay_pad = max(f32(lua.L_checknumber(L, 2)), 0)
+        }
+        case "overlay_border":
+        {
+        	settings.overlay_border = max(f32(lua.L_checknumber(L, 2)), 0)
+        }
+        case "overlay_border_color":
+        {
+        	settings.overlay_border_color = lua_read_color(L)
+        }
+        case "overlay_gap":
+        {
+            settings.overlay_gap = max(f32(lua.L_checknumber(L, 2)), 0)
         }
         case "pane_min_w":
         {
@@ -332,12 +354,17 @@ lua_api_get :: proc "c" (L: ^lua.State) -> c.int {
     case "overlay_label":      lua_push_color(L, settings.overlay_label); return 3
     case "overlay_list":       lua_push_color(L, settings.overlay_list); return 3
     case "overlay_sel_fg":     lua_push_color(L, settings.overlay_sel_fg); return 3
+    case "overlay_sel_bg":     lua_push_color(L, settings.overlay_sel_bg); return 3
     case "ime_preview":        lua_push_color(L, settings.ime_preview); return 3
     case "keyword":            lua_push_color(L, settings.keyword); return 3
     case "comment":            lua_push_color(L, settings.comment); return 3
     case "string":             lua_push_color(L, settings.lit_string); return 3
     case "number":             lua_push_color(L, settings.lit_number); return 3
+    case "operator":           lua_push_color(L, settings.operator); return 3
     case "directive":          lua_push_color(L, settings.directive); return 3
+    case "function":           lua_push_color(L, settings.function_name); return 3
+	case "type":               lua_push_color(L, settings.type_name); return 3
+    case "current_line":       lua_push_color(L, settings.current_line); return 3
     case "gutter_min_digits":  lua.pushinteger(L, lua.Integer(settings.gutter_min_digits)); return 1
     case "gutter_pad":         lua.pushnumber(L, lua.Number(settings.gutter_pad)); return 1
     case "status_pad":         lua.pushnumber(L, lua.Number(settings.status_pad)); return 1
@@ -366,6 +393,9 @@ lua_api_get :: proc "c" (L: ^lua.State) -> c.int {
     case "split_t":            lua.pushnumber(L, lua.Number(settings.split_t)); return 1
     case "overlay_rows":       lua.pushinteger(L, lua.Integer(settings.overlay_rows)); return 1
     case "overlay_pad":        lua.pushnumber(L, lua.Number(settings.overlay_pad)); return 1
+    case "overlay_border":          lua.pushnumber(L, lua.Number(settings.overlay_border)); return 1
+    case "overlay_border_color":	lua_push_color(L, settings.overlay_border_color); return 3
+    case "overlay_gap":          lua.pushnumber(L, lua.Number(settings.overlay_gap)); return 1
     case "pane_min_w":         lua.pushnumber(L, lua.Number(settings.pane_min_w)); return 1
     case "pane_min_extra":     lua.pushnumber(L, lua.Number(settings.pane_min_extra)); return 1
     case "font_fallback":
@@ -704,5 +734,6 @@ script_reload :: proc(ed: ^Editor) {
         buf.lex_id = lex_index_from_path(buf.path)
         buf.lex_dirty = true
     }
+    project_load(ed)
     ed.font_dirty = true
 }

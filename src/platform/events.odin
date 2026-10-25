@@ -111,7 +111,8 @@ Mouse_Button :: enum {
 Mouse_Action :: enum {
     Down,
     Up,
-    Move
+    Move,
+    Double
 }
 
 Mouse_Event :: struct {

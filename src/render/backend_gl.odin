@@ -3,6 +3,7 @@ package render
 import gl "vendor:OpenGL"
 import "../platform"
 import win "core:sys/windows"
+import "core:math"
 
 INSTANCE_CAP :: 4096
 
@@ -228,13 +229,16 @@ gl_apply_clip :: proc(entry: ^Entry_Clip) {
         return
     }
 
-    x := i32(entry.pos.x)
-    w := i32(entry.rect_size.x)
-    h := i32(entry.rect_size.y)
-    y := gls.window.height - i32(entry.pos.y) - h
+	top := i32(math.floor(entry.pos.y))
+	bot := i32(math.ceil(entry.pos.y + entry.rect_size.y))
+	left := i32(math.floor(entry.pos.x))
+	right := i32(math.ceil(entry.pos.x + entry.rect_size.x))
+	w := max(right - left, 0)
+	h := max(bot - top, 0)
+	y := gls.window.height - bot
 
     gl.Enable(gl.SCISSOR_TEST)
-    gl.Scissor(x, y, w, h)
+    gl.Scissor(left, y, w, h)
 }
 
 gl_texture_create :: proc(w, h: int, format: Texture_Format) -> Texture_Handle {

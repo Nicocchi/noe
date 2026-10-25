@@ -20,14 +20,26 @@ Undo_Op :: struct {
 Overlay_Kind :: enum {
     None,
     Find,
-    Switcher
+    Switcher,
+    Files,
+    New_File
 }
 
 Overlay :: struct {
-    kind:   Overlay_Kind,
-    text:   [dynamic]u8,
-    cursor: int,
-    sel:    int
+    kind:           Overlay_Kind,
+    text:           [dynamic]u8,
+    cursor:         int,
+    sel:            int,
+    scroll:         int,
+    files:          [dynamic]string,
+    entry_dir:	  [dynamic]bool,
+    root:           string,
+    browse: 		string,
+    preview:        []u8,
+    preview_tokens: [dynamic]Token,
+    preview_path:   string,
+    preview_sel:    int,
+    rename_from:	string
 }
 
 Newline :: enum {
@@ -71,6 +83,21 @@ View :: struct {
     extras:         [dynamic]Caret
 }
 
+Project_Cmd :: struct {
+	name: string,
+	cmd:  string
+}
+
+Project :: struct {
+	loaded:	 bool,
+	dir:		string,
+	name:	   string,
+	patterns:   [dynamic]string,
+	blacklist:  [dynamic]string,
+	commands:   [dynamic]Project_Cmd,
+	fkey:	   [12]string
+}
+
 Editor :: struct {
     buffers:        [dynamic]Buffer,
     views:          [dynamic]View,
@@ -80,7 +107,8 @@ Editor :: struct {
     eat_mouse:      bool,
     split_t:        f32,
     lua:            rawptr,
-    font_dirty:     bool
+    font_dirty:     bool,
+    project:		Project
 }
 
 Settings :: struct {
@@ -103,12 +131,17 @@ Settings :: struct {
     overlay_label:          [4]f32,
     overlay_list:           [4]f32,
     overlay_sel_fg:         [4]f32,
+    overlay_sel_bg:		 [4]f32,
     ime_preview:            [4]f32,
     keyword:                [4]f32,
     comment:                [4]f32,
     lit_string:             [4]f32,
     lit_number:             [4]f32,
+    operator:               [4]f32,
     directive:              [4]f32,
+    current_line:           [4]f32,
+    function_name:		  [4]f32,
+    type_name:			  [4]f32,
     gutter_min_digits:      int,
     gutter_pad:             f32,
     status_pad:             f32,
@@ -123,6 +156,9 @@ Settings :: struct {
     split_t:                f32,
     overlay_rows:           int,
     overlay_pad:            f32,
+    overlay_border:		    f32,
+    overlay_border_color:   [4]f32,
+    overlay_gap:            f32,
     pane_min_w:             f32,
     pane_min_extra:         f32,
     font_fallback:          string,
@@ -155,12 +191,17 @@ settings_defaults := Settings{
     overlay_label       = {0.70, 0.80, 0.95, 1.0},
     overlay_list        = {0.70, 0.70, 0.70, 1.0},
     overlay_sel_fg      = {0.95, 0.95, 0.95, 1.0},
+    overlay_sel_bg      = {0.25, 0.40, 0.62, 1.0},
     ime_preview         = {0.70, 0.85, 1.00, 1.0},
     keyword             = {0.34, 0.61, 0.84, 1.0},
     comment             = {0.42, 0.60, 0.33, 1.0},
     lit_string          = {0.81, 0.57, 0.47, 1.0},
     lit_number          = {0.71, 0.81, 0.66, 1.0},
+    operator            = {212.0 / 255.0, 212.0 / 255.0, 170.0 / 255.0, 1.0},
     directive           = {0.78, 0.54, 0.90, 1.0},
+    function_name       = {220.0 / 255.0, 220.0 / 255.0, 170.0 / 255.0, 1.0},
+    type_name           = {78.0 / 255.0, 201.0 / 255.0, 176.0 / 255.0, 1.0},
+	current_line        = {55.0 / 255.0, 55.0 / 255.0, 58.0 / 255.0, 1.0},
     gutter_min_digits   = 3,
     gutter_pad          = 12,
     status_pad          = 8,
@@ -175,6 +216,9 @@ settings_defaults := Settings{
     split_t              = 0.5,
     overlay_rows         = 8,
     overlay_pad          = 8,
+    overlay_border       = 1,
+    overlay_border_color = {0.40, 0.40, 0.45, 1.0},
+    overlay_gap          = 6,
     pane_min_w           = 64,
     pane_min_extra       = 48,
     font_fallback        = "",
@@ -239,6 +283,7 @@ editor_destroy :: proc(ed: ^Editor) {
     }
     delete(ed.views)
     delete(ed.overlay.text)
+    picker_clear(ed)
     ed^ = {}
 }
 
@@ -323,6 +368,23 @@ set_cursor :: proc(ed: ^Editor, pos: int, keep_sel: bool) {
 
 click_at :: proc(ed: ^Editor, pos: int) {
     set_cursor(ed, pos, false)
+}
+
+select_word_at :: proc(ed: ^Editor, pos: int) {
+	lo, hi := word_range_at(ed, pos)
+	if lo == hi {
+		click_at(ed, pos)
+		return
+	}
+	b := active_buffer(ed)
+	r, _ := text.buffer_peek_rune(&b.doc, lo)
+	if !is_word(r) {
+		click_at(ed, pos)
+		return
+	}
+	v := active_view(ed)
+	v.sel_anchor = lo
+	set_cursor(ed, hi, true)
 }
 
 drag_to :: proc(ed: ^Editor, pos: int) {

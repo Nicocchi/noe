@@ -385,6 +385,17 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 			event_push(window, Mouse_Event{window.mouse_x, window.mouse_y, .Left, .Down, key_mods()})
 			return 0
 		}
+		case win.WM_LBUTTONDBLCLK:
+		{
+			if window == nil || window.ime_composing {
+				return 0
+			}
+			win.SetCapture(hwnd)
+			window.mouse_x = f32(win.GET_X_LPARAM(lparam))
+			window.mouse_y = f32(win.GET_Y_LPARAM(lparam))
+			event_push(window, Mouse_Event{window.mouse_x, window.mouse_y, .Left, .Double, key_mods()})
+			return 0
+		}
 		case win.WM_LBUTTONUP:
 		{
 			if window == nil {
@@ -425,6 +436,8 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 		case win.WM_SIZE:
 		{
 			if window != nil {
+				window.width = i32(win.LOWORD(lparam))
+				window.height = i32(win.LOWORD(lparam))
 				window.needs_redraw = true
 			}
 			return 0
@@ -452,7 +465,7 @@ window_create :: proc(w: ^Window, width, height: i32, title: string) -> bool {
 	instance := win.HINSTANCE(win.GetModuleHandleW(nil))
 
 	wc := win.WNDCLASSW {
-		style = win.CS_HREDRAW | win.CS_VREDRAW | win.CS_OWNDC,
+		style = win.CS_HREDRAW | win.CS_VREDRAW | win.CS_OWNDC | win.CS_DBLCLKS,
 		lpfnWndProc = window_proc,
 		hInstance = instance,
 		hCursor = win.LoadCursorA(nil, win.IDC_ARROW),
@@ -492,7 +505,7 @@ window_create :: proc(w: ^Window, width, height: i32, title: string) -> bool {
 }
 
 window_show :: proc(w: ^Window) {
-	win.ShowWindow(w.hwnd, win.SW_SHOW)
+	win.ShowWindow(w.hwnd, win.SW_SHOWMAXIMIZED)
 }
 
 window_wait :: proc(timeout_ms: u32) {

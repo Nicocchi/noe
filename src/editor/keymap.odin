@@ -91,4 +91,6 @@ bind_default_keys :: proc() {
     bind_chord({.Ctrl}, .D, "add_next_match")
     bind_key(.Escape, "carets_clear")
     bind_chord({.Ctrl, .Shift}, .R,  "reload_config")
+    bind_chord({.Ctrl, .Shift}, .P, "file_finder")
+    bind_chord({.Ctrl}, .N, "file_new")
 }

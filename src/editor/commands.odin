@@ -78,6 +78,8 @@ register_default_commands :: proc() {
     register_command("add_next_match", cmd_add_next_match)
     register_command("carets_clear",   cmd_carets_clear)
     register_command("reload_config", cmd_reload_config)
+    register_command("file_finder", cmd_file_finder)
+    register_command("file_new", cmd_file_new)
 }
 
 is_word :: proc(r: rune) -> bool {
@@ -578,7 +580,18 @@ move_home :: proc(ed: ^Editor, keep_sel: bool) {
     v := active_view(ed)
     b := active_buffer(ed)
     line := text.buffer_line_at(&b.doc, v.cursor)
-    set_cursor(ed, text.buffer_line_start(&b.doc, line), keep_sel)
+    start := text.buffer_line_start(&b.doc, line)
+    end := text.buffer_line_end(&b.doc, line)
+    indent := start
+    for indent < end {
+    	r, sz := text.buffer_peek_rune(&b.doc, indent)
+    	if sz <= 0 || (r != ' ' && r != '\t') { break }
+    	indent += sz
+    }
+    if indent == end { indent = start }
+    dest := indent
+    if v.cursor == indent && indent != start { dest = start }
+    set_cursor(ed, dest, keep_sel)
 }
 
 move_end :: proc(ed: ^Editor, keep_sel: bool) {
