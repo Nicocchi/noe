@@ -80,6 +80,7 @@ register_default_commands :: proc() {
     register_command("reload_config", cmd_reload_config)
     register_command("file_finder", cmd_file_finder)
     register_command("file_new", cmd_file_new)
+    register_command("buffer_close", cmd_buffer_close)
 }
 
 is_word :: proc(r: rune) -> bool {

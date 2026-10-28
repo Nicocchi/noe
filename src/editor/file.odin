@@ -209,3 +209,94 @@ view_show_buffer :: proc(ed: ^Editor, buf_id: int) {
     clear(&v.extras)
     editor_update_title(ed)
 }
+
+buffer_free :: proc(b: ^Buffer) {
+    text.buffer_destroy(&b.doc)
+    for op in b.undo {
+        delete(op.text)
+        delete(op.before)
+        delete(op.after)
+    }
+    delete(b.undo)
+    delete(b.pending_before)
+    delete(b.path)
+    delete(b.tokens)
+    b^ = {}
+}
+
+buffer_status_path :: proc(ed: ^Editor, b: ^Buffer) -> string {
+    if len(b.path) == 0 {
+        return "untitled"
+    }
+    if ed.project.loaded && len(ed.project.dir) > 0 {
+        rel := picker_rel(ed.project.dir, b.path)
+        if len(rel) > 0 && len(rel) < len(b.path) {
+            return rel
+        }
+    }
+    return buffer_display_name(b)
+}
+
+buffer_is_open :: proc(ed: ^Editor, path: string) -> bool {
+    for &b in ed.buffers {
+        if len(b.path) > 0 && b.path == path {
+            return true
+        }
+    }
+    return false
+}
+
+buffer_close_at :: proc(ed: ^Editor, id: int) {
+    if id < 0 || id >= len(ed.buffers) { return }
+    if ed.buffers[id].dirty {
+        name := buffer_status_path(ed, &ed.buffers[id])
+        switch platform.dialog_unsaved(ed.host, name) {
+            case .Cancel:
+            {
+                return
+            }
+            case .Save:
+            {
+                v := active_view(ed)
+                prev := v.buf_id
+                ok := editor_save(ed)
+                v.buf_id = prev
+                if !ok { return }
+            }
+            case .Discard: {}
+        }
+    }
+
+    buffer_free(&ed.buffers[id])
+    ordered_remove(&ed.buffers, id)
+
+    if len(ed.buffers) == 0 {
+        append(&ed.buffers, Buffer{})
+        b := &ed.buffers[0]
+        text.buffer_init(&b.doc, 4096)
+        b.undo = make([dynamic]Undo_Op)
+        b.scroll_x_dirty = true
+        b.lex_id = lex_index_named("odin")
+        b.lex_dirty = true
+        b.newline = settings.newline
+    }
+
+    for &v in ed.views {
+        if v.buf_id == id {
+            v.buf_id = clamp(id, 0, len(ed.buffers) - 1)
+            v.cursor = 0
+            v.sel_anchor = 0
+            v.desired_col = 0
+            v.scroll_x = 0
+            v.scroll_y = 0
+            clear(&v.extras)
+        } else if v.buf_id > id {
+            v.buf_id -= 1
+        }
+    }
+    editor_update_title(ed)
+}
+
+cmd_buffer_close :: proc(ed: ^Editor) {
+    buffer_close_at(ed, active_view(ed).buf_id)
+}

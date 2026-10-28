@@ -167,6 +167,19 @@ overlay_key :: proc(ed: ^Editor, key: platform.Key, mods: platform.Mods) {
 	        	create_delete(ed)
 	        }
         }
+        case .W:
+        {
+            if .Ctrl in mods && o.kind == .Switcher {
+                if id, ok := switcher_selected(ed); ok {
+                    n := switcher_match_count(ed, string(o.text[:]))
+                    if n <= 0 {
+                        o.sel = 0
+                    } else {
+                        o.sel = clamp(o.sel, 0, n - 1)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -269,7 +282,7 @@ switcher_match_count :: proc(ed:^ Editor, query: string) -> int {
 	}
     n := 0
     for &b in ed.buffers {
-        name := buffer_display_name(&b)
+        name := buffer_status_path(ed, &b)
         if len(query) == 0 || strings.contains(name, query) {
             n += 1
         }
@@ -285,7 +298,7 @@ switcher_accept :: proc(ed: ^Editor) {
     }
     row := 0
     for i in 0 ..< len(ed.buffers) {
-        name := buffer_display_name(&ed.buffers[i])
+        name := buffer_status_path(ed, &ed.buffers[i])
         if len(query) != 0 && !strings.contains(name, query) {
             continue
         }
@@ -296,4 +309,17 @@ switcher_accept :: proc(ed: ^Editor) {
         }
         row += 1
     }
+}
+
+switcher_selected :: proc(ed: ^Editor) -> (id: int, ok: bool) {
+    query := string(ed.overlay.text[:])
+    if _, line_ok := switcher_line(query); line_ok { return }
+    row := 0
+    for i in 0 ..< len(ed.buffers) {
+        name := buffer_status_path(ed, &ed.buffers[i])
+        if len(query) != 0 && !strings.contains(name, query) { continue }
+        if row == ed.overlay.sel { return i, true }
+        row += 1
+    }
+    return
 }

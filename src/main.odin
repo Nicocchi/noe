@@ -599,12 +599,13 @@ main :: proc() {
 				if b.dirty {
 					star = " *"
 				}
-				left := fmt.tprintf("%s%s", editor.editor_display_name(&ed), star)
+				left := fmt.tprintf("%s%s", editor.buffer_status_path(&ed, b), star)
 				eol := "LF"
 				if b.newline == .CRLF {
 					eol = "CRLF"
 				}
-				right := fmt.tprintf("Ln %d, Col %d		%s", line_i + 1, col, eol)
+				nlines := text.buffer_line_count(&b.doc)
+				right := fmt.tprintf("Ln %d, Col %d    %d lines		%s", line_i + 1, col, nlines, eol)
 				if sl, sr_status, sok := editor.script_status_line(&ed); sok {
 					left, right = sl, sr_status
 				}
@@ -688,6 +689,9 @@ main :: proc() {
 						row_y := math.round(list.y + pad + f32(drawn) * lh)
 						qy := line_baseline(row_y, lh)
 						color := editor.settings.text
+						if editor.buffer_is_open(&ed, p) {
+							color = editor.settings.function_name
+						}
 						if row == ed.overlay.sel {
 							render.push_quad(&queue, {list.x, row_y}, {list.w, lh}, editor.settings.overlay_sel_bg)
 							color = editor.settings.overlay_sel_fg
@@ -797,15 +801,11 @@ main :: proc() {
 							label = fmt.tprintf("%s/", name)
 						}
 						row_y := math.round(list.y + lh + pad + f32(drawn) * lh)
-
 						qu := line_baseline(row_y, lh)
-
 						color := editor.settings.text
 
 						if ed.overlay.entry_dir[row] {
-
 							color = editor.settings.overlay_label
-
 						}
 
 						if row == ed.overlay.sel {
@@ -842,83 +842,65 @@ main :: proc() {
 						label = "Command: "
 					}
 					lx := ov.x + 8
-
 					cy := math.round(ov.y + 8)
-
 					ly := line_baseline(cy, lh)
-
 					render.push_text(&queue, label, lx, ly, editor.settings.overlay_label)
-
 					lx += render.font_width(label)
-
 					q := string(ed.overlay.text[:])
-
 					render.push_text(&queue, q, lx, ly, editor.settings.text)
-
 					prefix := string(ed.overlay.text[:ed.overlay.cursor])
-
 					cx := lx + render.font_width(prefix)
-
 					if caret_on {
-
 						render.push_quad(&queue, {cx, cy}, {editor.settings.caret_w, lh}, editor.settings.caret)
-
 					}
 
 					if ed.overlay.kind == .Switcher {
-
 						row_top := cy + lh
-
 						row := 0
-
 						query := string(ed.overlay.text[:])
-
 						if line, ok := editor.switcher_line(query); ok {
-
 							n := text.buffer_line_count(&editor.active_buffer(&ed).doc)
-
 							shown := line
-
 							if n > 0 {
-
 								shown = clamp(line, 1, n)
-
 							}
-
 							label := fmt.tprintf("Line %d", shown)
-
 							render.push_quad(&queue, {ov.x, row_top}, {ov.w, lh}, editor.settings.overlay_sel_bg)
-
 							render.push_text(&queue, label, ov.x + 8, line_baseline(row_top, lh), editor.settings.overlay_sel_fg)
-
 						} else {
-
+							list_h := max(ov.y + ov.h - row_top, lh)
+							vis := max(int(list_h / lh), 1)
+							if ed.overlay.sel < ed.overlay.scroll {
+								ed.overlay.scroll = ed.overlay.sel
+							}
+							if ed.overlay.sel >= ed.overlay.scroll + vis {
+								ed.overlay.scroll = ed.overlay.sel - vis + 1
+							}
+							render.push_clip(&queue, {ov.x, row_top}, {ov.w, list_h})
+							drawn := 0
 							for i in 0 ..< len(ed.buffers) {
-
-								name := editor.buffer_display_name(&ed.buffers[i])
-
+								name := editor.buffer_status_path(&ed, &ed.buffers[i])
 								if len(query) != 0 && !strings.contains(name, query) {
-
 									continue
-
 								}
 
+								if row < ed.overlay.scroll {
+									row += 1
+									continue
+								}
+
+								if drawn >= vis { break }
 								color: [4]f32 = editor.settings.overlay_list
 
 								if row == ed.overlay.sel {
-
 									render.push_quad(&queue, {ov.x, row_top}, {ov.w, lh}, editor.settings.overlay_sel_bg)
-
 									color = editor.settings.overlay_sel_fg
-
 								}
 
 								render.push_text(&queue, name, ov.x + 8, line_baseline(row_top, lh), color)
-
 								row_top += lh
-
 								row += 1
-
+								drawn += 1
 							}
 
 						}
