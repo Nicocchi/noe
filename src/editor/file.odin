@@ -64,14 +64,35 @@ editor_load_path :: proc(ed: ^Editor, path: string) -> bool {
     return true
 }
 
+strip_cr :: proc(s: string) -> string {
+	n := 0
+	for i in 0 ..< len(s) {
+		if s[i] != '\r' {
+			n += 1
+		}
+	}
+	if n == len(s) {
+		return s
+	}
+	out := make([]u8, n)
+	i := 0
+	for j in 0 ..< len(s) {
+		if s[j] != '\r' {
+			out[i] = s[j]
+			i += 1
+		}
+	}
+	return string(out)
+}
+
 editor_save :: proc(ed: ^Editor) -> bool {
     b := active_buffer(ed)
     if len(b.path) == 0 {
         return editor_save_as(ed)
     }
-    s := text.buffer_clone_string(&b.doc)
-    defer delete(s)
-
+    raw := text.buffer_clone_string(&b.doc)
+    defer delete(raw)
+    s := strip_cr(raw)
     out := s
     crlf: []u8
     if b.newline == .CRLF {

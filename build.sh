@@ -15,7 +15,7 @@ MINGW*|MSYS*|CYGWIN*)
 	out=build/noe.exe
 	lua_src="$odin_root/vendor/lua/5.4/windows/lua54.dll"
 	lua_dst=build/lua54.dll
-	subsytem=-subsystem:windows
+	subsystem=-subsystem:windows
 	;;
 Linux)
 	lua_src="$odin_root/vendor/lua/5.4/linux/liblua54.so"

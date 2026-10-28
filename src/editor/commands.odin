@@ -166,6 +166,14 @@ insert_text :: proc(ed: ^Editor, s: string) {
 	if len(s) == 0 {
 		return
 	}
+    cleaned := strip_cr(s)
+    defer if cleaned != s {
+        delete(cleaned)
+    }
+    s := cleaned
+    if len(s) == 0 {
+        return
+    }
     v := active_view(ed)
     if len(v.extras) > 0 {
         insert_text_multi(ed, s)
