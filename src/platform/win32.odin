@@ -325,6 +325,22 @@ window_proc :: proc "stdcall" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM
 			event_push(window, Key_Event{key, mods})
 			return 0
 		}
+		case win.WM_SYSKEYDOWN:
+		{
+			if window == nil {
+				return win.DefWindowProcW(hwnd, msg, wparam, lparam)
+			}
+			mods := key_mods()
+			if .Alt in mods && (wparam == win.VK_UP || wparam == win.VK_DOWN) {
+				key := Key.Down
+				if wparam == win.VK_UP {
+					key = .Up
+				}
+				event_push(window, Key_Event{key, mods})
+				return 0
+			}
+			return win.DefWindowProcW(hwnd, msg, wparam, lparam)
+		}
 		case win.WM_IME_STARTCOMPOSITION:
 		{
 			if window != nil {
@@ -464,15 +480,19 @@ window_create :: proc(w: ^Window, width, height: i32, title: string) -> bool {
 
 	instance := win.HINSTANCE(win.GetModuleHandleW(nil))
 
-	wc := win.WNDCLASSW {
+	icon := transmute(win.LPCWSTR)uintptr(1)
+	wc := win.WNDCLASSEXW {
+		cbSize = size_of(win.WNDCLASSEXW),
 		style = win.CS_HREDRAW | win.CS_VREDRAW | win.CS_OWNDC | win.CS_DBLCLKS,
 		lpfnWndProc = window_proc,
 		hInstance = instance,
+		hIcon = win.HICON(win.LoadImageW(instance, icon, win.IMAGE_ICON, 0, 0, win.LR_DEFAULTSIZE)),
 		hCursor = win.LoadCursorA(nil, win.IDC_ARROW),
-		lpszClassName = win.L(CLASS_NAME)
+		lpszClassName = win.L(CLASS_NAME),
+		hIconSm = win.HICON(win.LoadImageW(instance, icon, win.IMAGE_ICON, 256, 256, 0)),
 	}
 
-	if win.RegisterClassW(&wc) == 0 {
+	if win.RegisterClassExW(&wc) == 0 {
 		return false
 	}
 

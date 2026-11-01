@@ -94,4 +94,6 @@ bind_default_keys :: proc() {
     bind_chord({.Ctrl, .Shift}, .P, "file_finder")
     bind_chord({.Ctrl}, .N, "file_new")
     bind_chord({.Ctrl}, .W, "buffer_close")
+    bind_chord({.Alt}, .Up, "line_up")
+    bind_chord({.Alt}, .Down, "line_down")
 }

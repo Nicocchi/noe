@@ -194,8 +194,6 @@ main :: proc() {
 			status_h = 0
 		}
 		lay := editor.layout_compute(f32(window.width), f32(window.height), lh_page, gutter_w, status_h, len(ed.views), ed.split_t)
-		// tr := lay.views[0].text
-		// gr := lay.views[0].gutter
 		tr := lay.views[ed.active_view].text
 		gr := lay.views[ed.active_view].gutter
 		sr := lay.status
@@ -436,6 +434,7 @@ main :: proc() {
 			if sr.h > 0 {
 				draw_status(&queue, &ed, lay.status, lh)
 			}
+			
 			if editor.overlay_is_open(&ed) {
 				draw_overlay(&queue, &ed, &window, lay, lh, caret_on)
 			}

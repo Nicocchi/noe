@@ -81,6 +81,8 @@ register_default_commands :: proc() {
     register_command("file_finder", cmd_file_finder)
     register_command("file_new", cmd_file_new)
     register_command("buffer_close", cmd_buffer_close)
+    register_command("line_up", cmd_line_up)
+    register_command("line_down", cmd_line_down)
 }
 
 is_word :: proc(r: rune) -> bool {
@@ -892,4 +894,229 @@ cmd_carets_clear :: proc(ed: ^Editor) {
 
 cmd_reload_config :: proc(ed: ^Editor) {
     script_reload(ed)
+}
+
+line_indent :: proc(doc: ^text.Buffer, line: int) -> (cols, bytes: int) {
+	ls := text.buffer_line_start(doc, line)
+	le := text.buffer_line_end(doc, line)
+	tw := max(settings.tab_width, 1)
+	for ls + bytes < le {
+		c := text.buffer_byte(doc, ls + bytes)
+		if c == ' ' {
+			cols += 1
+			bytes += 1
+		} else if c == '\t' {
+			cols += tw
+			bytes += 1
+		} else { break }
+	}
+	return
+}
+
+indent_cols :: proc() -> int {
+    return max(settings.tab_width, 1)
+}
+
+is_block_open :: proc(r: rune) -> bool {
+    return r == '{' || r == '[' || r == '('
+}
+
+is_block_close :: proc(r: rune) -> bool {
+    return r == '}' || r == ']' || r == ')'
+}
+
+line_edge_runes :: proc(doc: ^text.Buffer, line: int) -> (first, last: rune) {
+    ls := text.buffer_line_start(doc, line)
+    le := text.buffer_line_end(doc, line)
+    p := ls
+    for p < le {
+        r, sz := text.buffer_peek_rune(doc, p)
+        if sz <= 0 { break }
+        if r != ' ' && r != '\t' {
+            first = r
+            break
+        }
+        p += sz
+    }
+    p = le
+    for p > ls {
+        start, _ := text.buffer_prev_rune(doc, p)
+        r, _ := text.buffer_peek_rune(doc, start)
+        p = start
+        if r != ' ' && r != '\t' {
+            last = r
+            break
+        }
+    }
+    return
+}
+
+move_indent_delta :: proc(doc: ^text.Buffer, first, neighbor, dir: int) -> int {
+    base, _ := line_indent(doc, first)
+    nb_cols, _ := line_indent(doc, neighbor)
+    target := nb_cols
+    left, right := line_edge_runes(doc, neighbor)
+    if dir > 0 {
+        if is_block_open(right) {
+            target += indent_cols()
+        }
+    } else if is_block_close(left) {
+        target += indent_cols()
+    }
+    return target - base
+}
+
+indent_bytes :: proc(cols: int) -> int {
+	cols := max(cols, 0)
+	if settings.use_tabs {
+		tw := max(settings.tab_width, 1)
+		return cols / tw + cols % tw
+	}
+	return cols
+}
+
+append_indent :: proc(out: ^[dynamic]u8, cols: int) {
+	cols := max(cols, 0)
+	if settings.use_tabs {
+		tw := max(settings.tab_width, 1)
+		for _ in 0 ..< cols / tw {
+			append(out, u8('\t'))
+		}
+		for _ in 0 ..< cols % tw {
+			append(out, u8(' '))
+		}
+	} else {
+		for _ in 0 ..< cols {
+			append(out, u8(' '))
+		}
+	}
+}
+
+reindent_lines :: proc(doc: ^text.Buffer, first, last, delta: int) -> string {
+	out := make([dynamic]u8, context.temp_allocator)
+	for line in first ..= last {
+		if line > first {
+			append(&out, u8('\n'))
+		}
+		cols, bytes := line_indent(doc, line)
+		ls := text.buffer_line_start(doc, line)
+		le := text.buffer_line_end(doc, line)
+		if le == ls { continue }
+		append_indent(&out, cols + delta)
+		rest := le - (ls + bytes)
+		if rest > 0 {
+			tmp := make([]u8, rest, context.temp_allocator)
+			text.buffer_read(doc, ls + bytes, rest, tmp)
+			append(&out, ..tmp)
+		}
+	}
+	return string(out[:])
+}
+
+replace_span :: proc(ed: ^Editor, pos: int, old, fresh: string) {
+	b := active_buffer(ed)
+	id := active_view(ed).buf_id
+	if len(old) > 0 {
+		text.buffer_delete(&b.doc, pos, len(old))
+		view_nudge(ed, id, pos, -len(old))
+		undo_record_delete(ed, pos, old)
+	} else {
+		delete(old)
+	}
+	
+	if len(fresh) > 0 {
+		text.buffer_insert(&b.doc, pos, fresh)
+		view_nudge(ed, id, pos, len(fresh))
+		undo_record_insert(ed, pos, fresh)
+	}
+}
+
+move_lines :: proc(ed: ^Editor, dir: int) {
+	v := active_view(ed)
+	b := active_buffer(ed)
+	doc := &b.doc
+	n := text.buffer_line_count(doc)
+	first, last: int
+	if has_selection(ed) {
+		first, last, _ = indent_line_range(ed)
+	} else {
+		line := text.buffer_line_at(doc, v.cursor)
+		first, last = line, line
+	}
+	if dir < 0 && first == 0 { return }
+	if dir > 0 && last + 1 >= n { return }
+	focus := text.buffer_line_at(doc, v.cursor)
+	focus_col := v.cursor - text.buffer_line_start(doc, focus)
+	if focus < first || focus > last {
+		anchor := v.sel_anchor
+		focus = text.buffer_line_at(doc, anchor)
+		focus_col = anchor - text.buffer_line_start(doc, focus)
+		if focus < first || focus > last {
+			focus = first
+			focus_col = 0
+		}
+	}
+	focus_cols, focus_bytes := line_indent(doc, focus)
+	neighbor := last + 1
+	if dir < 0 {
+		neighbor = first - 1
+	}
+	delta := move_indent_delta(doc, first, neighbor, dir)
+	block_lo := text.buffer_line_start(doc, first)
+	block_hi := text.buffer_line_end(doc, last)
+	nb_lo := text.buffer_line_start(doc, neighbor)
+	nb_hi := text.buffer_line_end(doc, neighbor)
+	lo := min(block_lo, nb_lo)
+	hi := max(block_hi, nb_hi)
+	old := text.buffer_clone_range(doc, lo, hi - lo)
+	block_n := block_hi - block_lo
+	neigh_n := nb_hi - nb_lo
+	neigh := old[block_n + 1:]
+	moved := old[:block_n]
+	if dir < 0 {
+		neigh = old[:neigh_n]
+		moved = old[neigh_n + 1:]
+	}
+	if delta != 0 {
+		moved = reindent_lines(doc, first, last, delta)
+	}
+	out := make([dynamic]u8)
+	if dir > 0 {
+		n := len(out)
+		resize(&out, n + len(neigh))
+		copy(out[n:], neigh)
+		append(&out, u8('\n'))
+		n = len(out)
+		resize(&out, n + len(moved))
+		copy(out[n:], moved)
+	} else {
+		n := len(out)
+		resize(&out, n + len(moved))
+		copy(out[n:], moved)
+		append(&out, u8('\n'))
+		n = len(out)
+		resize(&out, n + len(neigh))
+		copy(out[n:], neigh)
+	}
+	new_col := focus_col
+	if delta != 0 {
+		new_col = focus_col + (indent_bytes(focus_cols + delta) - focus_bytes)
+		if new_col < 0 {
+			new_col = 0
+		}
+	}
+	begin_edit(ed)
+	defer end_edit(ed)
+	replace_span(ed, lo, old, string(out[:]))
+	delete(out)
+	b.scroll_x_dirty = true
+	set_cursor(ed, text.buffer_pos_at_line(doc, focus + dir, new_col), false)
+}
+
+cmd_line_up :: proc(ed: ^Editor) {
+	move_lines(ed, -1)
+}
+
+cmd_line_down :: proc(ed: ^Editor) {
+	move_lines(ed, 1)
 }
