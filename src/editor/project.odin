@@ -137,13 +137,14 @@ project_load :: proc(ed: ^Editor) {
 		return
 	}
 	defer delete(start)
-	_, dir, ok := project_find_from(start)
+	path, dir, ok := project_find_from(start)
 	if !ok {
 		b := active_buffer(ed)
 		if len(b.path) > 0 {
-			_, dir, ok = project_find_from(filepath.dir(b.path))
+			path, dir, ok = project_find_from(filepath.dir(b.path))
 		}
 	}
+	defer delete(path)
 	if !ok {
 		project_clear(ed)
 		return

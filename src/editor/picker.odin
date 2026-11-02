@@ -52,7 +52,8 @@ picker_clear :: proc(ed: ^Editor) {
     for s in o.files {
         delete(s)
     }
-    clear(&o.files)
+    delete(o.files)
+    o.files = {}
     clear(&o.entry_dir)
     delete(o.entry_dir)
     o.entry_dir = {}
@@ -63,6 +64,7 @@ picker_clear :: proc(ed: ^Editor) {
     delete(o.root)
     o.root = ""
     delete(o.preview)
+    delete(o.preview_tokens)
     o.preview_tokens = {}
     o.preview = {}
     delete(o.preview_path)

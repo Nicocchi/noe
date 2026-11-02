@@ -4,6 +4,10 @@ import "core:fmt"
 import "core:time"
 import "core:math"
 import "core:strings"
+import "core:os"
+import "core:mem"
+import "core:path/filepath"
+
 import "platform"
 import "render"
 import "text"
@@ -80,7 +84,37 @@ font_path_of :: proc() -> string {
 	return "C:/Windows/Fonts/consola.ttf"
 }
 
+dump_leaks :: proc(track: ^mem.Tracking_Allocator, note: string) {
+	context.allocator = track.backing
+	b: strings.Builder
+	strings.builder_init(&b)
+	defer strings.builder_destroy(&b)
+	fmt.sbprintfln(&b, "%s", note)
+	if len(track.allocation_map) == 0 && len(track.bad_free_array) == 0 {
+		fmt.sbprintln(&b, "no leaks")
+	} else {
+		for _, leak in track.allocation_map {
+			fmt.sbprintfln(&b, "%v leaked %v bytes", leak.location, leak.size)
+		}
+		for bad in track.bad_free_array {
+			fmt.sbprintfln(&b, "%v bad free %v", bad.location, bad.memory)
+		}
+	}
+	dir := filepath.dir(os.args[0])
+	path := fmt.tprintf("%s/leaks.txt", dir)
+	_ = os.write_entire_file(path, strings.to_string(b))
+}
+
 main :: proc() {
+	track: mem.Tracking_Allocator
+	mem.tracking_allocator_init(&track, context.allocator)
+	track.bad_free_callback = mem.tracking_allocator_bad_free_callback_add_to_array
+	context.allocator = mem.tracking_allocator(&track)
+	defer {
+		dump_leaks(&track, "shutdown")
+		mem.tracking_allocator_destroy(&track)
+	}
+
 	window: platform.Window
 	if !platform.window_create(&window, 1280, 720, "Nico's Own Editor") {
 		fmt.eprintln("Failed to create window")
@@ -109,13 +143,20 @@ main :: proc() {
 
 	editor.register_default_commands()
 	editor.bind_default_keys()
-	defer delete(editor.commands)
-	defer delete(editor.keymap)
+	defer {
+		for _, s in editor.keymap { delete(s) }
+		delete(editor.keymap)
+		for _, s in editor.window_keymap { delete(s) }
+		delete(editor.window_keymap)
+		delete(editor.commands)
+	}
 
 	ed: editor.Editor
 	editor.editor_init(&ed, "")
+	defer editor.editor_destroy(&ed)
 	opened := editor.startup_dir()
 	editor.script_init(&ed)
+	defer editor.lex_clear()
 	editor.active_buffer(&ed).lex_id = editor.lex_index_named("odin")
 	editor.active_buffer(&ed).lex_dirty = true
 	defer editor.script_shutdown(&ed)
@@ -143,7 +184,6 @@ main :: proc() {
 	caret_on := true
 	dragging := false
 	splitting := false
-	defer editor.editor_destroy(&ed)
 
 	for !window.should_close {
 		platform.window_poll(&window)
@@ -221,6 +261,10 @@ main :: proc() {
 				}
 				case platform.Text_Event:
 				{
+				    if ed.eat_text {
+				        ed.eat_text = false
+				        break
+				    }
 					if editor.overlay_is_open(&ed) {
 						editor.overlay_insert_rune(&ed, ev.ch)
 					} else {
@@ -234,6 +278,18 @@ main :: proc() {
 						editor.overlay_key(&ed, ev.key, ev.mods)
 						follow = true
 						break
+					}
+					
+					if ed.window_chord {
+					    ed.window_chord = false
+					    follow = true
+					    if ev.key != .Escape {
+					        if name, ok := editor.lookup_window_key(ev.key, ev.mods); ok {
+					            editor.run_command(&ed, name)
+					        }
+					        ed.eat_text = true
+					    }
+					    break
 					}
 
 					if name, ok := editor.lookup_key(ev.key, ev.mods); ok {
@@ -253,6 +309,7 @@ main :: proc() {
 						}
 						break
 					}
+					ed.window_chord = false
 					if ed.eat_mouse {
 						if ev.action == .Up {
 							ed.eat_mouse = false

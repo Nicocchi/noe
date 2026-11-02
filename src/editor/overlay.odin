@@ -46,6 +46,31 @@ overlay_insert_rune :: proc(ed: ^Editor, r: rune) {
     }
 }
 
+overlay_insert_string :: proc(ed: ^Editor, s: string) {
+    if !overlay_is_open(ed) || len(s) == 0 { return }
+    cleaned := strip_cr(s)
+    defer if cleaned != s {
+        delete(cleaned)
+    }
+    line := cleaned
+    for i in 0 ..< len(cleaned) {
+        if cleaned[i] == '\n' {
+            line = cleaned[:i]
+            break
+        }
+    }
+    if len(line) == 0 { return }
+    inject_at(&ed.overlay.text, ed.overlay.cursor, ..transmute([]u8)line)
+    ed.overlay.cursor += len(line)
+    if ed.overlay.kind == .Switcher {
+        n := switcher_match_count(ed, string(ed.overlay.text[:]))
+        ed.overlay.sel = 0 if n <= 0 else clamp(ed.overlay.sel, 0, n - 1)
+    }
+    if ed.overlay.kind == .Files {
+        picker_clamp_sel(ed)
+    }
+}
+
 overlay_backspace :: proc(ed: ^Editor) {
     o := &ed.overlay
     if o.cursor <= 0 {
@@ -155,6 +180,36 @@ overlay_key :: proc(ed: ^Editor, key: platform.Key, mods: platform.Mods) {
                 find_next(ed)
             }
         }
+        case .C:
+        {
+            if .Ctrl in mods {
+                q := string(o.text[:])
+                if len(q) > 0 {
+                    _ = platform.clipboard_set(ed.host, q)
+                }
+            }
+        }
+        case .V:
+        {
+            if .Ctrl in mods {
+                s, ok := platform.clipboard_get(ed.host)
+                if ok {
+                    defer delete(s)
+                    overlay_insert_string(ed, s)
+                }
+            }
+        }
+        case .X:
+        {
+            if .Ctrl in mods {
+                q := string(o.text[:])
+                if len(q) > 0 {
+                    _ = platform.clipboard_set(ed.host, q)
+                }
+                clear(&o.text)
+                o.cursor = 0
+            }
+        }
         case .R:
         {
         	if .Ctrl in mods && o.kind == .New_File {
@@ -185,6 +240,13 @@ overlay_key :: proc(ed: ^Editor, key: platform.Key, mods: platform.Mods) {
 
 cmd_find :: proc(ed: ^Editor) {
     overlay_open(ed, .Find)
+    if !has_selection(ed) { return }
+    lo, hi := selection_range(ed)
+    if hi <= lo { return }
+    b := active_buffer(ed)
+    s := text.buffer_clone_range(&b.doc, lo, hi - lo)
+    defer delete(s)
+    overlay_insert_string(ed, s)
 }
 
 ascii_fold :: proc(b: u8) -> u8 {

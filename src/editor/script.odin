@@ -65,6 +65,12 @@ script_init :: proc(ed: ^Editor) {
 
     lua.pushcfunction(L, lua_api_run)
     lua.setfield(L, -2, "run")
+    
+    lua.pushcfunction(L, lua_api_bind_window)
+    lua.setfield(L, -2, "bind_window")
+    
+    lua.pushcfunction(L, lua_api_unbind_window)
+    lua.setfield(L, -2, "unbind_window")
 
     lua.pushcfunction(L, lua_api_unbind)
     lua.setfield(L, -2, "unbind")
@@ -106,12 +112,19 @@ script_init :: proc(ed: ^Editor) {
 }
 
 script_shutdown :: proc(ed: ^Editor) {
-    if ed.lua == nil {
-        return
+    if ed.lua != nil {
+        lua.close((^lua.State)(ed.lua))
+        ed.lua = nil
     }
-    lua.close((^lua.State)(ed.lua))
-    ed.lua = nil
+    for key in lua_cmds {
+        delete(key)
+    }
     clear(&lua_cmds)
+    delete(lua_cmds)
+    for _, list in lua_hooks {
+        delete(list)
+    }
+    delete(lua_hooks)
     lua_status_ref = lua.NOREF
     script_ed = nil
 }
@@ -138,12 +151,57 @@ lua_api_bind :: proc "c" (L: ^lua.State) -> c.int {
     context = script_ctx
     chord := string(lua.L_checkstring(L, 1))
     cmd := string(lua.L_checkstring(L, 2))
+    window, mods, key, ok := parse_bind(chord)
+    if !ok {
+        lua.L_error(L, "bad chord")
+        return 0
+    }
+    if window {
+        bind_window(mods, key, cmd)
+    } else {
+        bind_chord(mods, key, cmd)
+    }
+    return 0
+}
+
+lua_api_unbind :: proc "c" (L: ^lua.State) -> c.int {
+    context = script_ctx
+    chord := string(lua.L_checkstring(L, 1))
+    window, mods, key, ok := parse_bind(chord)
+    if !ok {
+        lua.L_error(L, "bad chord")
+        return 0
+    }
+    if window {
+        unbind_window(mods, key)
+    } else {
+        unbind_chord(mods, key)
+    }
+    return 0
+}
+
+lua_api_bind_window :: proc "c" (L: ^lua.State) -> c.int {
+    context = script_ctx
+    chord := string(lua.L_checkstring(L, 1))
+    cmd := string(lua.L_checkstring(L, 2))
     mods, key, ok := parse_chord(chord)
     if !ok {
         lua.L_error(L, "bad chord")
         return 0
     }
-    bind_chord(mods, key, cmd)
+    bind_window(mods, key, cmd)
+    return 0
+}
+
+lua_api_unbind_window :: proc "c" (L: ^lua.State) -> c.int {
+    context = script_ctx
+    chord := string(lua.L_checkstring(L, 1))
+    mods, key, ok := parse_chord(chord)
+    if !ok {
+        lua.L_error(L, "bad chord")
+        return 0
+    }
+    unbind_window(mods, key)
     return 0
 }
 
@@ -307,6 +365,15 @@ lua_api_set :: proc "c" (L: ^lua.State) -> c.int {
         {
             settings.show_status = bool(lua.toboolean(L, 2))
         }
+        case "show_brace_header":
+        {
+            settings.show_brace_header = bool(lua.toboolean(L, 2))
+        }
+        case "show_brace_guides":
+        {
+            settings.show_brace_guides = bool(lua.toboolean(L, 2))
+        }
+        case "brace_guide":     settings.brace_guide = lua_read_color(L)
         case "find_case_sensitive":
         {
             settings.find_case_sensitive = bool(lua.toboolean(L, 2))
@@ -408,6 +475,9 @@ lua_api_get :: proc "c" (L: ^lua.State) -> c.int {
     case "tofu":               lua_push_color(L, settings.tofu); return 3
     case "show_gutter":        lua.pushboolean(L, b32(settings.show_gutter)); return 1
     case "show_status":        lua.pushboolean(L, b32(settings.show_status)); return 1
+    case "show_brace_header":  lua.pushboolean(L, b32(settings.show_brace_header)); return 1
+    case "show_brace_guides":  lua.pushboolean(L, b32(settings.show_brace_guides)); return 1
+    case "brace_guide":        lua_push_color(L, settings.brace_guide); return 3
     case "find_case_sensitive": lua.pushboolean(L, b32(settings.find_case_sensitive)); return 1
     case "scroll_margin":      lua.pushnumber(L, lua.Number(settings.scroll_margin)); return 1
     case "text_pad_x": lua.pushnumber(L, lua.Number(settings.text_pad_x)); return 1
@@ -453,18 +523,6 @@ lua_api_run :: proc "c" (L: ^lua.State) -> c.int {
     return 0
 }
 
-lua_api_unbind :: proc "c" (L: ^lua.State) -> c.int {
-    context = script_ctx
-    chord := string(lua.L_checkstring(L, 1))
-    mods, key, ok := parse_chord(chord)
-    if !ok {
-        lua.L_error(L, "bad chord")
-        return 0
-    }
-    unbind_chord(mods, key)
-    return 0
-}
-
 lua_read_color :: proc(L: ^lua.State) -> [4]f32 {
     r := f32(lua.L_checknumber(L, 2))
     g, b := r, r
@@ -492,6 +550,23 @@ parse_chord :: proc(s: string) -> (mods: platform.Mods, key: platform.Key, ok: b
         }
     }
     key, ok = key_from_name(parts[len(parts) - 1])
+    return
+}
+
+parse_bind :: proc(s: string) -> (window: bool, mods: platform.Mods, key: platform.Key, ok: bool) {
+    s := strings.trim_space(s)
+    space := -1
+    for i in 0 ..< len(s) {
+        if s[i] == ' ' {
+            space = i
+        }
+    }
+    token := s
+    if space >= 0 {
+        window = true
+        token = strings.trim_space(s[space + 1:])
+    }
+    mods, key, ok = parse_chord(token)
     return
 }
 
@@ -680,17 +755,22 @@ script_reload :: proc(ed: ^Editor) {
 
     lua.settop(L, 0)
 
+    cmd_names: [dynamic]string
     for name, ref in lua_cmds {
         lua.L_unref(L, lua.REGISTRYINDEX, ref)
-        delete(name)
+        append(&cmd_names, name)
     }
     clear(&lua_cmds)
+    for n in cmd_names {
+        delete(n)
+    }
+    delete(cmd_names)
 
-    for kind, list in lua_hooks {
+    for kind in ([3]string{"save", "open", "change"}) {
+        list := lua_hooks[kind]
         for ref in list {
             lua.L_unref(L, lua.REGISTRYINDEX, ref)
         }
-        list := list
         clear(&list)
         lua_hooks[kind] = list
     }

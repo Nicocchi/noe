@@ -9,7 +9,8 @@ import "text"
 import "editor"
 
 draw_gutter :: proc(queue: ^render.Render_Queue, dgr: editor.Rect,
-                    dv: ^editor.View, db: ^editor.Buffer, dtr: editor.Rect, lh: f32, first, last: int) {
+                    dv: ^editor.View, db: ^editor.Buffer, dtr: editor.Rect, 
+                    lh: f32, first, last: int, active: bool) {
     render.push_clip(queue, {dgr.x, dgr.y}, {dgr.w, dgr.h})
     cur_line := text.buffer_line_at(&db.doc, dv.cursor)
     for i in first ..< last {
@@ -18,7 +19,7 @@ draw_gutter :: proc(queue: ^render.Render_Queue, dgr: editor.Rect,
         x := dgr.x + dgr.w - tw - 8
         y := line_top(dv, dtr, i, lh)
         color: [4]f32 = editor.settings.gutter
-        if i == cur_line {
+        if active && i == cur_line {
             color = editor.settings.gutter_current
         }
         render.push_text(queue, label, x, line_baseline(y, lh), color)
@@ -33,6 +34,7 @@ draw_text_area :: proc(queue: ^render.Render_Queue, ed: ^editor.Editor,
     head := max(editor.settings.text_pad_y, 2)
     render.push_clip(queue, {dtr.x, dtr.y - head}, {dtr.w, dtr.h + head})
     
+    // Current line highlight
     cur := text.buffer_line_at(&db.doc, dv.cursor)
     if cur >= first && cur < last {
         y := line_top(dv, dtr, cur, lh)
@@ -108,7 +110,85 @@ draw_text_area :: proc(queue: ^render.Render_Queue, ed: ^editor.Editor,
             rest := line[col:]
             render.push_text(queue, rest, origin + render.font_width(line[:col]), baseline, editor.settings.text)
         }
+        
     }
+
+    
+    if editor.settings.show_brace_header || editor.settings.show_brace_guides {
+        editor.brace_sync(dv, db)
+    }
+    if editor.settings.show_brace_guides {
+        origin := dtr.x - dv.scroll_x
+        tab_w := render.font_width("\t")
+        dim := editor.settings.brace_guide
+        dim.a *= 0.35
+        if tab_w > 0 {
+            for i in first ..< last {
+                line := text.buffer_line_clone(&db.doc, i)
+                indent := 0
+                for indent < len(line) && (line[indent] == ' ' || line[indent] == '\t') {
+                    indent += 1
+                }
+                vis := render.font_width(line[:indent])
+                delete(line)
+                y := line_top(dv, dtr, i, lh)
+                col_x: f32 = 0
+                for col_x < vis {
+                    gx := math.round(origin + col_x)
+                    render.push_quad(queue, {gx, y}, {1, lh}, dim)
+                    col_x += tab_w
+                }
+            }
+        }
+        for bi in 0 ..< dv.brace_n {
+            open_pos := dv.brace_open[bi]
+            close_pos := dv.brace_close[bi]
+            oi := text.buffer_line_at(&db.doc, open_pos)
+            ci := text.buffer_line_at(&db.doc, close_pos)
+            if ci <= oi {
+                continue
+            }
+            cline := text.buffer_line_clone(&db.doc, ci)
+            indent := 0
+            for indent < len(cline) && (cline[indent] == ' ' || cline[indent] == '\t') {
+                indent += 1
+            }
+            gx := math.round(origin + render.font_width(cline[:indent]))
+            delete(cline)
+            top := line_top(dv, dtr, oi + 1, lh)
+            bot := line_top(dv, dtr, ci, lh)
+            y0 := max(top, dtr.y - head)
+            y1 := min(bot, dtr.y + dtr.h)
+            if y1 > y0 {
+                render.push_quad(queue, {gx, y0}, {1, y1 - y0}, editor.settings.brace_guide)
+            }
+        }
+    }
+
+    if vi == ed.active_view {
+        if editor.settings.show_brace_header {
+            for bi in 0 ..< dv.brace_n {
+                open_pos := dv.brace_open[bi]
+                close_pos := dv.brace_close[bi]
+                ci := text.buffer_line_at(&db.doc, close_pos)
+                oi := text.buffer_line_at(&db.doc, open_pos)
+                if ci == oi || ci < first || ci >= last {
+                    continue
+                }
+                ghost := editor.brace_header_clone(db, open_pos)
+                if len(ghost) == 0 {
+                    continue
+                }
+                cline := text.buffer_line_clone(&db.doc, ci)
+                gy := line_top(dv, dtr, ci, lh)
+                gx := math.round(dtr.x - dv.scroll_x + render.font_width(cline) + 12)
+                render.push_text(queue, ghost, gx, line_baseline(gy, lh), editor.settings.comment)
+                delete(cline)
+                delete(ghost)
+            }
+        }
+    }
+
 
     line_i := text.buffer_line_at(&db.doc, dv.cursor)
     line_start := text.buffer_line_start(&db.doc, line_i)
@@ -130,24 +210,23 @@ draw_text_area :: proc(queue: ^render.Render_Queue, ed: ^editor.Editor,
         if caret_on || window.ime_preview_len > 0 {
             render.push_quad(queue, {cx, cy}, {editor.settings.caret_w, lh}, editor.settings.caret)
         }
-    } else {
-        render.push_quad(queue, {cx, cy}, {editor.settings.caret_w, lh}, editor.settings.caret_inactive)
+        for e in dv.extras {
+            el := text.buffer_line_at(&db.doc, e.cursor)
+            es := text.buffer_line_start(&db.doc, el)
+            eline := text.buffer_line_clone(&db.doc, el)
+            defer delete(eline)
+            ep := eline[:min(e.cursor - es, len(eline))]
+            ex := dtr.x + render.font_width(ep) - dv.scroll_x
+            ey := line_top(dv, dtr, el, lh)
+            col: [4]f32 = editor.settings.caret_inactive
+            if caret_on {
+                col = editor.settings.caret
+            }
+            render.push_quad(queue, {ex, ey}, {editor.settings.caret_w, lh}, col)
+        }
     }
 
-    for e in dv.extras {
-        el := text.buffer_line_at(&db.doc, e.cursor)
-        es := text.buffer_line_start(&db.doc, el)
-        eline := text.buffer_line_clone(&db.doc, el)
-        defer delete(eline)
-        ep := eline[:min(e.cursor - es, len(eline))]
-        ex := dtr.x + render.font_width(ep) - dv.scroll_x
-        ey := line_top(dv, dtr, el, lh)
-        col: [4]f32 = editor.settings.caret_inactive
-        if vi == ed.active_view && caret_on {
-            col = editor.settings.caret
-        }
-        render.push_quad(queue, {ex, ey}, {editor.settings.caret_w, lh}, col)
-    }
+    
 }
 
 draw_view :: proc(queue: ^render.Render_Queue, ed: ^editor.Editor,
@@ -172,7 +251,7 @@ draw_view :: proc(queue: ^render.Render_Queue, ed: ^editor.Editor,
 
     // Gutter
     if dgr.x > 0 {
-        draw_gutter(queue, dgr, dv, db, dtr, lh, first, last)
+        draw_gutter(queue, dgr, dv, db, dtr, lh, first, last, vi == ed.active_view)
     }
 
     // Text area

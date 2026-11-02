@@ -80,7 +80,13 @@ View :: struct {
     scroll_x:       f32,
     scroll_y:       f32,
     page_lines:     int,
-    extras:         [dynamic]Caret
+    extras:         [dynamic]Caret,
+    brace_cursor:   int,
+    brace_doc_len: int,
+    brace_toks:     int,
+    brace_n:        int,
+    brace_open:     [16]int,
+    brace_close:    [16]int
 }
 
 Project_Cmd :: struct {
@@ -108,7 +114,9 @@ Editor :: struct {
     split_t:        f32,
     lua:            rawptr,
     font_dirty:     bool,
-    project:		Project
+    project:		Project,
+    window_chord:   bool,
+    eat_text:       bool
 }
 
 Settings :: struct {
@@ -165,10 +173,13 @@ Settings :: struct {
     tofu:                   [4]f32,
     show_gutter:            bool,
     show_status:            bool,
+    show_brace_header:      bool,
     find_case_sensitive:    bool,
     scroll_margin:          f32,
     text_pad_x:             f32,
     text_pad_y:             f32,
+    show_brace_guides:      bool,
+    brace_guide:            [4]f32
 }
 
 settings_defaults := Settings{
@@ -225,10 +236,13 @@ settings_defaults := Settings{
     tofu                 = {0.55, 0.55, 0.55, 1.0},
     show_gutter          = true,
     show_status          = true,
+    show_brace_header    = true,
     find_case_sensitive  = true,
     scroll_margin        = 1,
     text_pad_x           = 8,
     text_pad_y           = 8,
+    show_brace_guides    = true,
+    brace_guide          = {0.40, 0.40, 0.44, 1.0}
 }
 
 settings := settings_defaults
@@ -284,6 +298,7 @@ editor_destroy :: proc(ed: ^Editor) {
     delete(ed.views)
     delete(ed.overlay.text)
     picker_clear(ed)
+    project_clear(ed)
     ed^ = {}
 }
 

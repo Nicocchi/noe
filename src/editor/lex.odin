@@ -100,14 +100,21 @@ lex_clear :: proc() {
         delete(f.keywords)
         delete(f.ops)
         for m in f.comments {
-            delete(m.open)
-            delete(m.close)
+            if len(m.open) > 0 {
+                delete(m.open)
+            }
+            if len(m.close) > 0 {
+                delete(m.close)
+            }
         }
         delete(f.comments)
-        delete(f.directive)
+        if len(f.directive) > 0 {
+            delete(f.directive)
+        }
     }
 
-    clear(&lex_files)
+    delete(lex_files)
+    lex_files = nil
 }
 
 lex_sort_ops :: proc(ops: ^[dynamic]string) {
@@ -186,10 +193,14 @@ lex_load_file :: proc(path: string) {
         if line == "comments:"   { section = 4; continue }
         if section == 4 {
             open, close := lex_split_mark(line)
-            append(&f.comments, Lex_Mark{
-                open = strings.clone(open),
-                close = strings.clone(close)
-            })
+            m: Lex_Mark
+            if len(open) > 0 {
+                m.open = strings.clone(open)
+            }
+            if len(close) > 0 {
+                m.close = strings.clone(close)
+            }
+            append(&f.comments, m)
         }
         word := strings.clone(line)
         switch section {

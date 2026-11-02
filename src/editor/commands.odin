@@ -73,6 +73,9 @@ register_default_commands :: proc() {
     register_command("view_next", cmd_view_next)
     register_command("view_left", cmd_view_left)
     register_command("view_right", cmd_view_right)
+    register_command("view_up", cmd_view_up)
+    register_command("view_down", cmd_view_down)
+    register_command("window_prefix", cmd_window_prefix)
     register_command("buffer_switcher", cmd_buffer_switcher)
     register_command("select_all", cmd_select_all)
     register_command("add_next_match", cmd_add_next_match)
@@ -83,6 +86,7 @@ register_default_commands :: proc() {
     register_command("buffer_close", cmd_buffer_close)
     register_command("line_up", cmd_line_up)
     register_command("line_down", cmd_line_down)
+    register_command("toggle_comment", cmd_toggle_comment)
 }
 
 is_word :: proc(r: rune) -> bool {
@@ -195,6 +199,31 @@ insert_text :: proc(ed: ^Editor, s: string) {
     b.typing = true
 }
 
+in_comment_or_string_at :: proc(b: ^Buffer, pos: int) -> bool {
+    if b.lex_dirty { buffer_lex(b) }
+    for t in b.tokens {
+        if t.pos + t.len < pos { continue }
+        if t.pos > pos { break }
+        if t.kind == .Comment { return true }
+        if t.kind == .String {
+            if pos == t.pos {
+                return false
+            }
+            if pos < t.pos + t.len { return true }
+            if t.len < 2 { return true }
+            first, _ := text.buffer_peek_rune(&b.doc, t.pos)
+            last_i, _ := text.buffer_prev_rune(&b.doc, t.pos + t.len)
+            last, _ := text.buffer_peek_rune(&b.doc, last_i)
+            return first != last
+        }
+    }
+    return false
+}
+
+in_comment_or_string :: proc(ed: ^Editor, pos: int) -> bool {
+    return in_comment_or_string_at(active_buffer(ed), pos)
+}
+
 insert_rune :: proc(ed: ^Editor, r: rune) {
     v := active_view(ed)
     if len(v.extras) > 0 {
@@ -204,6 +233,18 @@ insert_rune :: proc(ed: ^Editor, r: rune) {
     }
 
     b := active_buffer(ed)
+    if settings.smart_brackets && !has_selection(ed) && is_quote(r) {
+        nr, nsz := text.buffer_peek_rune(&b.doc, v.cursor)
+        if nsz > 0 && nr == r {
+            set_cursor(ed, v.cursor + nsz, false)
+            return
+        }
+    }
+    if in_comment_or_string(ed, v.cursor) {
+        bytes, n := utf8.encode_rune(r)
+        insert_text(ed, string(bytes[:n]))
+        return
+    }
 
     if rune_is_escaped(ed, v.cursor) {
         bytes, n := utf8.encode_rune(r)
@@ -314,7 +355,7 @@ cmd_delete_backward :: proc(ed: ^Editor) {
     nr, nsz := text.buffer_peek_rune(&b.doc, v.cursor)
     if psz > 0 && nsz > 0 {
         open_r, _ := text.buffer_peek_rune(&b.doc, pr)
-	    if closer, ok := pair_closer(open_r); settings.smart_brackets && ok && nr == closer {
+	    if closer, ok := pair_closer(open_r); settings.smart_brackets && ok && nr == closer && !in_comment_or_string(ed, v.cursor) {
             begin_edit(ed)
             defer end_edit(ed)
             cs := text.buffer_clone_range(&b.doc, v.cursor, nsz)
@@ -749,6 +790,18 @@ cmd_view_right :: proc(ed: ^Editor) {
     ed.active_view = min(ed.active_view + 1, len(ed.views) - 1)
 }
 
+cmd_view_up :: proc(ed: ^Editor) {
+    
+}
+
+cmd_view_down :: proc(ed: ^Editor) {
+    
+}
+
+cmd_window_prefix :: proc(ed: ^Editor) {
+    ed.window_chord = true
+}
+
 cmd_buffer_switcher :: proc(ed: ^Editor) {
     overlay_open(ed, .Switcher)
     ed.overlay.sel = 0
@@ -796,6 +849,10 @@ is_closer :: proc(r: rune) -> bool {
         case ')', ']', '}', '"', '\'', '`': return true
     }
     return false
+}
+
+is_quote :: proc(r: rune) -> bool {
+    return r == '"' || r == '\'' || r == '`'
 }
 
 cmd_add_next_match :: proc(ed: ^Editor) {
@@ -1105,12 +1162,53 @@ move_lines :: proc(ed: ^Editor, dir: int) {
 			new_col = 0
 		}
 	}
+	had_sel := has_selection(ed)
+	cursor_hi := v.cursor >= v.sel_anchor
+	lo_line, hi_line, lo_col, hi_col := 0, 0, 0, 0
+	if had_sel {
+	    sel_lo, sel_hi := selection_range(ed)
+	    lo_line = text.buffer_line_at(doc, sel_lo)
+	    hi_line = text.buffer_line_at(doc, sel_hi)
+	    lo_col = sel_lo - text.buffer_line_start(doc, lo_line)
+	    hi_col = sel_hi - text.buffer_line_start(doc, hi_line)
+	    if delta != 0 {
+	        if lo_line >= first && lo_line <= last {
+	            cols, bytes := line_indent(doc, lo_line)
+	            lo_col += indent_bytes(cols + delta) - bytes
+	            if lo_col < 0 { lo_col = 0 }
+	        }
+	        if hi_line >= first && hi_line <= last {
+	            cols, bytes := line_indent(doc, hi_line)
+	            hi_col += indent_bytes(cols + delta) - bytes
+	            if hi_col < 0 { hi_col = 0 }
+	        }
+	    }
+	}
 	begin_edit(ed)
 	defer end_edit(ed)
 	replace_span(ed, lo, old, string(out[:]))
 	delete(out)
 	b.scroll_x_dirty = true
-	set_cursor(ed, text.buffer_pos_at_line(doc, focus + dir, new_col), false)
+	if had_sel {
+	    nlines := text.buffer_line_count(doc)
+	    line_pos :: proc(doc: ^text.Buffer, line, col, nlines: int) -> int {
+	        if line < 0 { return 0 }
+	        if line >= nlines { return text.buffer_len(doc) }
+	        return text.buffer_pos_at_line(doc, line, col)
+	    }
+	    a := line_pos(doc, lo_line + dir, lo_col, nlines)
+	    c := line_pos(doc, hi_line + dir, hi_col, nlines)
+	    if cursor_hi {
+	        v.sel_anchor = a
+	        set_cursor(ed, c, true)
+	    } else {
+	        v.sel_anchor = c
+	        set_cursor(ed, a, true)
+	    }
+	} else {
+        set_cursor(ed, text.buffer_pos_at_line(doc, focus + dir, new_col), false)
+	}
+	
 }
 
 cmd_line_up :: proc(ed: ^Editor) {
@@ -1119,4 +1217,112 @@ cmd_line_up :: proc(ed: ^Editor) {
 
 cmd_line_down :: proc(ed: ^Editor) {
 	move_lines(ed, 1)
+}
+
+line_comment_open :: proc(b: ^Buffer) -> string {
+    lf := lex_file_of(b)
+    if lf != nil {
+        for m in lf.comments {
+            if len(m.close) == 0 && len(m.open) > 0 { return m.open }
+        }
+    }
+
+    return "//"
+}
+
+line_starts_at :: proc(doc: ^text.Buffer, pos, le: int, s: string) -> bool {
+    if pos + len(s) > le { return false }
+    for i in 0 ..< len(s) {
+        if text.buffer_byte(doc, pos + i) != s[i] { return false }
+    }
+    return true
+}
+
+line_content_start :: proc(doc: ^text.Buffer, ls, le: int) -> int {
+    p := ls
+    for p < le {
+        c := text.buffer_byte(doc, p)
+        if c != ' ' && c != '\t' { break }
+        p += 1
+    }
+    return p
+}
+
+cmd_toggle_comment :: proc(ed: ^Editor) {
+    v := active_view(ed)
+    b := active_buffer(ed)
+    first, last: int
+    ok: bool
+    if has_selection(ed) {
+        first, last, ok = indent_line_range(ed)
+    } else {
+        line := text.buffer_line_at(&b.doc, v.cursor)
+        first, last, ok = line, line, true
+    }
+    if !ok { return }
+    mark := line_comment_open(b)
+    if len(mark) == 0 { return }
+
+    all_on := true
+    any_code := false
+    for i in first ..= last {
+        ls := text.buffer_line_start(&b.doc, i)
+        le := text.buffer_line_end(&b.doc, i)
+        p := line_content_start(&b.doc, ls, le)
+        if p == le { continue }
+        any_code = true
+        if !line_starts_at(&b.doc, p, le, mark) {
+            all_on = false
+            break
+        }
+    }
+    if !any_code { all_on = false }
+
+    prefix := mark
+    if mark[len(mark) - 1] != ' ' {
+        prefix = fmt.tprintf("%s ", mark)
+    }
+
+    begin_edit(ed)
+    defer end_edit(ed)
+    id := v.buf_id
+    if all_on {
+        for i := last; i >= first; i -= 1 {
+            ls := text.buffer_line_start(&b.doc, i)
+            le := text.buffer_line_end(&b.doc, i)
+            p := line_content_start(&b.doc, ls, le)
+            if p == le || !line_starts_at(&b.doc, p, le, mark) { continue }
+            n := len(mark)
+            if p + n < le && text.buffer_byte(&b.doc, p + n) == ' ' { n += 1}
+            s := text.buffer_clone_range(&b.doc, p, n)
+            text.buffer_delete(&b.doc, p, n)
+            view_nudge(ed, id, p, -n)
+            undo_record_delete(ed, p, s)
+            if v.cursor > p {
+                v.cursor = max(v.cursor - n, p)
+            }
+            if v.sel_anchor > p {
+                v.sel_anchor = max(v.sel_anchor - n, p)
+            }
+        }
+    } else {
+        n := len(prefix)
+        for i := last; i >= first; i -= 1 {
+            ls := text.buffer_line_start(&b.doc, i)
+            le := text.buffer_line_end(&b.doc, i)
+            p := line_content_start(&b.doc, ls, le)
+            if p == le && first != last { continue }
+            text.buffer_insert(&b.doc, p, prefix)
+            view_nudge(ed, id, p, n)
+            undo_record_insert(ed, p, prefix)
+            if v.cursor >= p {
+                v.cursor += n
+            }
+            if v.sel_anchor >= p {
+                v.sel_anchor += n
+            }
+        }
+    }
+    b.scroll_x_dirty = true
+    v.desired_col = sync_col(ed)
 }
