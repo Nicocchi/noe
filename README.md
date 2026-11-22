@@ -2,6 +2,10 @@
 
 A native Odin editor.
 
+## Documentation
+
+You can view the documentation over at https://nicocchi.github.io/noe/
+
 ## Config
 
 User files live in `%APPDATA%\noe\` (Roaming). The folder is created on first run. Missing files are fine — built-in defaults apply.
