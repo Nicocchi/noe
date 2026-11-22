@@ -160,4 +160,17 @@ bind_default_keys :: proc() {
     bind_chord({.Alt}, .Up, "line_up")
     bind_chord({.Alt}, .Down, "line_down")
     bind_chord({.Ctrl}, .Slash, "toggle_comment")
+
+    bind_key(.F1,  "project_f1")
+    bind_key(.F2,  "project_f2")
+    bind_key(.F3,  "project_f3")
+    bind_key(.F4,  "project_f4")
+    bind_key(.F5,  "project_f5")
+    bind_key(.F6,  "project_f6")
+    bind_key(.F7,  "project_f7")
+    bind_key(.F8,  "project_f8")
+    bind_key(.F9,  "project_f9")
+    bind_key(.F10, "project_f10")
+    bind_key(.F11, "project_f11")
+    bind_key(.F12, "project_f12")
 }

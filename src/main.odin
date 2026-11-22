@@ -106,6 +106,8 @@ dump_leaks :: proc(track: ^mem.Tracking_Allocator, note: string) {
 }
 
 main :: proc() {
+    platform.console_attach()
+    
 	track: mem.Tracking_Allocator
 	mem.tracking_allocator_init(&track, context.allocator)
 	track.bad_free_callback = mem.tracking_allocator_bad_free_callback_add_to_array

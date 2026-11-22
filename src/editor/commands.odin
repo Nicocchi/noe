@@ -87,6 +87,18 @@ register_default_commands :: proc() {
     register_command("line_up", cmd_line_up)
     register_command("line_down", cmd_line_down)
     register_command("toggle_comment", cmd_toggle_comment)
+    register_command("project_f1",  cmd_project_f1)
+    register_command("project_f2",  cmd_project_f2)
+    register_command("project_f3",  cmd_project_f3)
+    register_command("project_f4",  cmd_project_f4)
+    register_command("project_f5",  cmd_project_f5)
+    register_command("project_f6",  cmd_project_f6)
+    register_command("project_f7",  cmd_project_f7)
+    register_command("project_f8",  cmd_project_f8)
+    register_command("project_f9",  cmd_project_f9)
+    register_command("project_f10", cmd_project_f10)
+    register_command("project_f11", cmd_project_f11)
+    register_command("project_f12", cmd_project_f12)
 }
 
 is_word :: proc(r: rune) -> bool {

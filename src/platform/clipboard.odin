@@ -14,6 +14,7 @@ foreign kernel32 {
 	GlobalLock   :: proc(hMem: win.HGLOBAL) -> rawptr ---
 	GlobalUnlock :: proc(hMem: win.HGLOBAL) -> win.BOOL ---
 	GlobalFree   :: proc(hMem: win.HGLOBAL) -> win.HGLOBAL ---
+    SetStdHandle :: proc(nStdHandle: win.DWORD, hHandle: win.HANDLE) -> win.BOOL ---
 }
 
 @(default_calling_convention="system")

@@ -5,6 +5,8 @@ import "core:strings"
 import "core:path/filepath"
 import "core:fmt"
 
+import "../platform"
+
 PROJECT_FILE :: "project.noe"
 
 startup_dir :: proc() -> bool {
@@ -161,3 +163,112 @@ project_load :: proc(ed: ^Editor) {
 	defer delete(data)
 	project_parse(ed, dir, data)
 }
+
+project_run :: proc(ed: ^Editor, cmdline: string) {
+	if len(cmdline) == 0 { return }
+	fmt.eprintfln("NOE: %s", cmdline)
+
+	when ODIN_OS == .Windows {
+		parts := strings.split(cmdline, " ")
+		defer delete(parts)
+		prog := parts[0]
+
+		if strings.has_prefix(prog, "./") || strings.has_prefix(prog, ".\\") {
+			prog = prog[2:]
+		}
+
+		win_prog, did_alloc := strings.replace_all(prog, "/", "\\")
+		if !did_alloc {
+			win_prog = strings.clone(prog)
+		}
+		defer delete(win_prog)
+		lower := strings.to_lower(win_prog)
+		defer delete(lower)
+		cl: string
+		if strings.has_suffix(lower, ".bat") || strings.has_suffix(lower, ".cmd") {
+			rest: [dynamic]string
+			defer delete(rest)
+			append(&rest, win_prog)
+			for p in parts[1:] {
+				if len(p) > 0 {
+					append(&rest, p)
+				}
+			}
+			line, _ := strings.join(rest[:], " ")
+			defer delete(line)
+			cl = fmt.aprintf("cmd.exe /c %s", line)
+		} else if strings.has_suffix(lower, ".sh") {
+			cl = fmt.aprintf("sh %s", cmdline)
+		} else if len(parts) > 1 {
+			rest, _ := strings.join(parts[1:], " ")
+			defer delete(rest)
+			cl = fmt.aprintf("%s %s", win_prog, rest)
+		} else {
+			cl = strings.clone(win_prog)
+		}
+
+		defer delete(cl)
+		code, pok := platform.process_run_attached(cl, ed.project.dir)
+		if !pok {
+			fmt.eprintln("NOE: failed to start:", cl)
+			return
+		}
+		fmt.eprintfln("NOE: exit %d", code)
+	} else {
+		parts := strings.split(cmdline, " ")
+		defer delete(parts)
+		argv: [dynamic]string
+		defer delete(argv)
+		for p in parts {
+			if len(p) > 0 {
+				append(&argv, p)
+			}
+		}
+		if len(argv) == 0 { return }
+		p, err := os.process_start({
+			command     = argv[:],
+			working_dir = ed.project.dir,
+			stdout      = os.stdout,
+			stderr      = os.stderr,
+		})
+		if err != nil {
+			fmt.eprintln("NOE:", err)
+			return
+		}
+		state, werr := os.process_wait(p)
+		if werr != nil {
+			fmt.eprintln("NOE:", werr)
+			return
+		}
+		fmt.eprintfln("NOE: exit %d", state.exit_code)
+	}
+}
+
+project_run_fkey :: proc(ed: ^Editor, slot: int) {
+	if !ed.project.loaded || slot < 0 || slot > 11 {
+		return
+	}
+
+	name := ed.project.fkey[slot]
+	if len(name) == 0 { return }
+	for c in ed.project.commands {
+		if c.name == name {
+			project_run(ed, c.cmd)
+			return
+		}
+	}
+	fmt.eprintln("NOE: no command named", name)
+}
+
+cmd_project_f1  :: proc(ed: ^Editor) { project_run_fkey(ed, 0) }
+cmd_project_f2  :: proc(ed: ^Editor) { project_run_fkey(ed, 1) }
+cmd_project_f3  :: proc(ed: ^Editor) { project_run_fkey(ed, 2) }
+cmd_project_f4  :: proc(ed: ^Editor) { project_run_fkey(ed, 3) }
+cmd_project_f5  :: proc(ed: ^Editor) { project_run_fkey(ed, 4) }
+cmd_project_f6  :: proc(ed: ^Editor) { project_run_fkey(ed, 5) }
+cmd_project_f7  :: proc(ed: ^Editor) { project_run_fkey(ed, 6) }
+cmd_project_f8  :: proc(ed: ^Editor) { project_run_fkey(ed, 7) }
+cmd_project_f9  :: proc(ed: ^Editor) { project_run_fkey(ed, 8) }
+cmd_project_f10 :: proc(ed: ^Editor) { project_run_fkey(ed, 9) }
+cmd_project_f11 :: proc(ed: ^Editor) { project_run_fkey(ed, 10) }
+cmd_project_f12 :: proc(ed: ^Editor) { project_run_fkey(ed, 11) }

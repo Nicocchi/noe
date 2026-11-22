@@ -1,10 +1,14 @@
 package platform
 
+import "core:os"
 import "base:runtime"
+
 import win "core:sys/windows"
 import gl "vendor:OpenGL"
 
 CLASS_NAME :: "NoeWindowClass"
+
+ATTACH_PARENT_PROCESS :: win.DWORD(0xFFFFFFFF)
 
 Cursor :: enum {
     Arrow,
@@ -684,4 +688,78 @@ window_set_cursor :: proc(w: ^Window, c: Cursor) {
 		id = win.IDC_SIZEWE
 	}
 	win.SetCursor(win.LoadCursorA(nil, id))
+}
+
+console_attach :: proc() {
+    if !win.AttachConsole(ATTACH_PARENT_PROCESS) {
+        return
+    }
+
+	sa := win.SECURITY_ATTRIBUTES{
+		nLength = size_of(win.SECURITY_ATTRIBUTES),
+		bInheritHandle = true
+	}
+    
+    h := win.CreateFileW(
+        win.L("CONOUT$"),
+        win.GENERIC_READ | win.GENERIC_WRITE,
+        win.FILE_SHARE_READ | win.FILE_SHARE_WRITE,
+        &sa,
+        win.OPEN_EXISTING,
+        0,
+        nil
+    )
+    
+    if h == win.INVALID_HANDLE_VALUE { return }
+
+	mode: win.DWORD
+	if win.GetConsoleMode(h, &mode) {
+		mode |= win.ENABLE_PROCESSED_OUTPUT | win.ENABLE_WRAP_AT_EOL_OUTPUT | win.ENABLE_VIRTUAL_TERMINAL_PROCESSING
+		mode &= ~win.DISABLE_NEWLINE_AUTO_RETURN
+		win.SetConsoleMode(h, mode)
+	}
+    
+    SetStdHandle(win.STD_OUTPUT_HANDLE, h)
+	SetStdHandle(win.STD_ERROR_HANDLE, h)
+    
+    Std :: struct {
+        file: os.File,
+        fd: rawptr
+    }
+    if os.stdout != nil && os.stdout.impl != nil {
+        (^Std)(os.stdout.impl).fd = rawptr(h)
+    }
+    if os.stderr != nil && os.stderr.impl != nil {
+        (^Std)(os.stderr.impl).fd = rawptr(h)
+    }
+}
+
+process_run_attached :: proc(command_line, working_dir: string) -> (exit_code: u32, ok: bool) {
+	cl := win.utf8_to_utf16(command_line, context.allocator)
+	if len(cl) == 0 { return }
+	defer delete(cl)
+	dir16: []u16
+	defer if len(dir16) > 0 {
+		delete(dir16)
+	}
+	dirw: win.wstring
+	if len(working_dir) > 0 {
+		dir16 = win.utf8_to_utf16(working_dir, context.allocator)
+		if len(dir16) == 0 {
+			return
+		}
+		dirw = win.wstring(raw_data(dir16))
+	}
+	si: win.STARTUPINFOW
+	si.cb = size_of(si)
+	pi: win.PROCESS_INFORMATION
+	if !win.CreateProcessW(nil, win.wstring(raw_data(cl)), nil, nil, true, 0, nil, dirw, &si, &pi) {
+		return
+	}
+	win.CloseHandle(pi.hThread)
+	win.WaitForSingleObject(pi.hProcess, win.INFINITE)
+	code: win.DWORD
+	win.GetExitCodeProcess(pi.hProcess, &code)
+	win.CloseHandle(pi.hProcess)
+	return u32(code), true
 }

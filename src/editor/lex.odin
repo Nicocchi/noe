@@ -176,8 +176,11 @@ lex_load_file :: proc(path: string) {
         }
         line := lex_trim(string(data[start:i]))
         start = i + 1
-        if len(line) == 0 || line[0] == '#' {
+        if len(line) == 0 {
             continue
+        }
+        if line[0] == '#' && len(line) > 1 {
+        	continue
         }
         if strings.has_prefix(line, "name:") {
             f.name = strings.clone(lex_trim(line[5:]))
@@ -347,7 +350,7 @@ lex_eat_number :: proc(doc: ^text.Buffer, i: int) -> int {
             i += 1
         }
     }
-    
+
     e := lex_at(doc, i)
     if e == 'e' || e == 'E' {
         i += 1
