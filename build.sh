@@ -29,14 +29,23 @@ Darwin)
 	;;
 esac
 
-odin build src -out:"$out" -debug $subsystem $resource
-
+mode=${1:-}
+if [ "$mode" = "release" ]; then
+	odin build src -out:"$out" -o:speed $subsystem $resource
+else
+	odin build src -out:"$out" -debug $subsystem $resource
+fi
 if [ -n "$lua_src" ] && [ -f "$lua_src" ]; then
 	cp -f "$lua_src" "$lua_dst"
 elif [ -f "$odin_root/lua54.dll" ]; then
 	cp -f "$odin_root/lua54.dll" build/lua54.dll
 fi
-
-if [ "${1:-}" = "run" ]; then
+if [ "$mode" = "run" ]; then
 	"$out"
+elif [ "$mode" = "release" ]; then
+	zip=build/noe-windows.zip
+	rm -f "$zip"
+	powershell.exe -NoProfile -Command \
+		"Compress-Archive -LiteralPath 'build/noe.exe','build/lua54.dll' -DestinationPath '$zip' -Force"
+	echo "wrote $zip"
 fi

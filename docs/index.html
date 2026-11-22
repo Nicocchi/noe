@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>NOE — Nico’s Own Editor</title>
+    <link rel="icon" href="res/noe.png" type="image/png">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar">
+    <p class="brand"><img class="brand-mark" src="res/noe.png" width="32" height="32" alt="">NOE</p>
+    <p class="brand-sub">Nico’s Own Editor</p>
+    <nav>
+        <h3>Guide</h3>
+        <a href="index.html">Overview</a>
+        <a href="lua.html">Lua API</a>
+        <a href="settings.html">Settings</a>
+        <a href="commands.html">Commands &amp; keys</a>
+        <a href="examples.html">Examples</a>
+    </nav>
+</aside>
+<main class="content">
+    <img class="hero-mark" src="res/noe.png" width="72" height="72" alt="NOE">
+    <h1>NOE</h1>
+    <p class="lead">A modeless, lightweight code editor written in Odin.</p>
+
+    <div class="cards">
+        <a class="card" href="lua.html">
+            <h3>Lua API</h3>
+            <p>bind, set, command, hook, status, require, reload.</p>
+        </a>
+        <a class="card" href="settings.html">
+            <h3>Settings</h3>
+            <p>Theme, layout, font, behavior — every <code>noe.set</code> key.</p>
+        </a>
+        <a class="card" href="commands.html">
+            <h3>Commands</h3>
+            <p>Built-in names and the default keymap.</p>
+        </a>
+        <a class="card" href="examples.html">
+            <h3>Examples</h3>
+            <p>Copy-paste <code>init.lua</code> snippets.</p>
+        </a>
+    </div>
+
+    <h2>Run</h2>
+    <p>From the <code>noe</code> directory, with Odin on <code>PATH</code>:</p>
+<pre><code>./build.sh
+./build.sh run
+./build.sh release</code></pre>
+    <p><code>./build.sh</code> writes a debug <code>build/noe.exe</code>, copies <code>lua54.dll</code> beside it, and links a windowed subsystem (no extra console). <code>./build.sh run</code> launches that build. <code>odin run src</code> keeps Odin’s console for <code>print</code>.</p>
+    <p><code>./build.sh release</code> builds with <code>-o:speed</code> (no debug info) and writes <code>build/noe-windows.zip</code> containing only <code>noe.exe</code> and <code>lua54.dll</code>. That is the shipping pair. User config still comes from <code>%APPDATA%\noe\</code> on the machine that runs it.</p>
+    <p>GitHub Release (pick a version):</p>
+<pre><code>git tag v0.1.0
+git push origin v0.1.0
+gh release create v0.1.0 build/noe-windows.zip --title "v0.1.0" --generate-notes</code></pre>
+
+    <h2>Config</h2>
+    <p>User files live in <code>%APPDATA%\noe\</code> (Roaming). The folder is created on first run. Missing files are silent — built-in defaults apply. Linux later: <code>~/.config/noe/</code>.</p>
+    <ul>
+        <li><code>init.lua</code> — settings, binds, commands, hooks. Extra modules sit next to it; <code>require("themes/amethyst")</code> loads <code>themes/amethyst.lua</code>.</li>
+        <li><code>lex\*.lex</code> — syntax highlighters, chosen by file extension. Unknown extensions fall back to <code>odin</code>.</li>
+    </ul>
+    <p><code>project.noe</code> is not AppData. It lives in the folder you open (or a parent): name, picker patterns, blacklist, commands, F-keys.</p>
+    <p>Reload without restart: <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> (<code>reload_config</code>). Save the Lua or <code>.lex</code> file first. Font size/path rebuild the atlas on that reload. Window size is still 1280×720 until a later setting exists.</p>
+
+    <h2>What it is</h2>
+    <ul>
+        <li>Gap buffer + line index, UTF-8, IME</li>
+        <li>Immediate-mode layout: gutter, status, floating overlay (find, buffer switcher, file picker, new file)</li>
+        <li>Two horizontal panes, shared buffers, multi-cursor (<kbd>Ctrl</kbd>+<kbd>D</kbd>)</li>
+        <li>Status path from the project root, line count, and LF/CRLF</li>
+        <li>Undo groups that restore carets and selections</li>
+        <li>Lua 5.4: settings, binds, custom commands, hooks, status line</li>
+    </ul>
+
+    <h2>Not in yet</h2>
+    <p>Vertical splits, regex find, tree-sitter, X11, Lua window size.</p>
+
+    <h2>License</h2>
+    <p>GPL-2.0.</p>
+
+    <p class="footer">Static docs for the current NOE tree. Open <code>index.html</code> in a browser — no build step.</p>
+</main>
+</div>
+<script src="js/nav.js"></script>
+</body>
+</html>

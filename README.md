@@ -80,6 +80,7 @@ From this directory, with Odin on `PATH`:
 ```
 ./build.sh
 ./build.sh run
+./build.sh release
 ```
 
 Windowed `build/noe.exe` plus `lua54.dll`. `odin run src` keeps a console for `print`.

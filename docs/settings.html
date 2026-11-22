@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Settings — NOE</title>
+    <link rel="icon" href="res/noe.png" type="image/png">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar">
+    <p class="brand"><img class="brand-mark" src="res/noe.png" width="32" height="32" alt="">NOE</p>
+    <p class="brand-sub">Nico’s Own Editor</p>
+    <nav>
+        <h3>Guide</h3>
+        <a href="index.html">Overview</a>
+        <a href="lua.html">Lua API</a>
+        <a href="settings.html">Settings</a>
+        <a href="commands.html">Commands &amp; keys</a>
+        <a href="examples.html">Examples</a>
+    </nav>
+</aside>
+<main class="content">
+    <h1>Settings</h1>
+    <p class="lead"><code>noe.set("name", value)</code> and <code>noe.get("name")</code>. Colors are 0–255 (one gray, or R, G, B). Reload resets to the Default column, then re-runs Lua.</p>
+    <input class="filter" id="filter" type="search" placeholder="Filter settings…">
+
+    <h2>Behavior</h2>
+    <table class="filterable">
+        <thead><tr><th>Name</th><th>Default</th><th>Notes</th></tr></thead>
+        <tbody>
+            <tr><td><code>tab_width</code></td><td>4</td><td>Min 1. Spaces per tab, indent width, renderer tab stops.</td></tr>
+            <tr><td><code>use_tabs</code></td><td>true</td><td>Indent / smart-indent with tab vs <code>tab_width</code> spaces.</td></tr>
+            <tr><td><code>newline</code></td><td><code>"lf"</code></td><td><code>"lf"</code> or <code>"crlf"</code> / <code>"cr"</code>. Untitled buffers only; opened files keep sniffed EOL.</td></tr>
+            <tr><td><code>smart_brackets</code></td><td>true</td><td>Pair <code>()[]{}"'`</code>, skip closer, backspace-eats-pair.</td></tr>
+            <tr><td><code>find_case_sensitive</code></td><td>true</td><td>Find and Ctrl+D. ASCII fold only when false.</td></tr>
+            <tr><td><code>blink_ms</code></td><td>530</td><td>Caret blink period, milliseconds.</td></tr>
+        </tbody>
+    </table>
+
+    <h2>Font</h2>
+    <table class="filterable">
+        <thead><tr><th>Name</th><th>Default</th><th>Notes</th></tr></thead>
+        <tbody>
+            <tr><td><code>font_size</code></td><td>18</td><td>Pixel height, clamped 8–72. Rebuilds atlas on reload.</td></tr>
+            <tr><td><code>font_path</code></td><td>""</td><td>Empty = <code>C:/Windows/Fonts/consola.ttf</code>. Bad path keeps the previous font.</td></tr>
+            <tr><td><code>font_fallback</code></td><td>""</td><td>Second face (e.g. CJK). Missing file is ignored.</td></tr>
+            <tr><td><code>tofu</code></td><td>140 gray</td><td>Missing-glyph box color.</td></tr>
+        </tbody>
+    </table>
+
+    <h2>Layout</h2>
+    <p><code>pad_y</code> insets the whole pane (divider moves). <code>text_pad_*</code> insets only the text rect.</p>
+    <table class="filterable">
+        <thead><tr><th>Name</th><th>Default</th><th>Notes</th></tr></thead>
+        <tbody>
+            <tr><td><code>pad_x</code></td><td>12</td><td>Window left margin.</td></tr>
+            <tr><td><code>pad_y</code></td><td>0</td><td>Window top margin (shrinks divider).</td></tr>
+            <tr><td><code>text_pad_x</code></td><td>8</td><td>Gap between gutter and text.</td></tr>
+            <tr><td><code>text_pad_y</code></td><td>8</td><td>Top and bottom inset inside the text rect.</td></tr>
+            <tr><td><code>split_gap</code></td><td>6</td><td>Divider width between panes. Min 1.</td></tr>
+            <tr><td><code>split_t</code></td><td>0.5</td><td>Left pane fraction, clamped 0.05–0.95.</td></tr>
+            <tr><td><code>pane_min_w</code></td><td>64</td><td>Floor pane width when splitting.</td></tr>
+            <tr><td><code>pane_min_extra</code></td><td>48</td><td>Added to gutter width for the min-pane formula.</td></tr>
+            <tr><td><code>gutter_min_digits</code></td><td>3</td><td>Minimum line-number columns.</td></tr>
+            <tr><td><code>gutter_pad</code></td><td>12</td><td>Extra gutter width besides digits.</td></tr>
+            <tr><td><code>status_pad</code></td><td>8</td><td>Added to line height for status bar height.</td></tr>
+            <tr><td><code>caret_w</code></td><td>2</td><td>Caret bar width. Min 1.</td></tr>
+            <tr><td><code>overlay_width</code></td><td>0.6</td><td>Find/switcher width as a fraction of the window, 0.1–1. File picker and new-file use 80%×70% instead.</td></tr>
+            <tr><td><code>overlay_rows</code></td><td>8</td><td>Switcher height in lines, including the prompt. Min 2.</td></tr>
+            <tr><td><code>overlay_pad</code></td><td>8</td><td>Overlay inset and find-box padding.</td></tr>
+            <tr><td><code>overlay_gap</code></td><td>6</td><td>Gap between picker columns (list, input, preview).</td></tr>
+            <tr><td><code>overlay_border</code></td><td>1</td><td>Overlay border thickness.</td></tr>
+            <tr><td><code>scroll_lines</code></td><td>3</td><td>Wheel scroll in lines.</td></tr>
+            <tr><td><code>scroll_margin</code></td><td>1</td><td>Lines of padding when following the caret.</td></tr>
+            <tr><td><code>show_gutter</code></td><td>true</td><td>Hide line numbers when false.</td></tr>
+            <tr><td><code>show_status</code></td><td>true</td><td>Hide status bar when false.</td></tr>
+            <tr><td><code>show_brace_header</code></td><td>true</td><td>Ghost the `{` line after a multi-line `}`.</td></tr>
+            <tr><td><code>show_brace_guides</code></td><td>true</td><td>Vertical indent lines for the enclosing `{`…`}` nest.</td></tr>
+        </tbody>
+    </table>
+
+    <h2>Theme (colors)</h2>
+    <p><code>noe.set("bg", 35)</code> or <code>noe.set("selection", 64, 102, 158)</code>. Get returns three ints.</p>
+    <table class="filterable">
+        <thead><tr><th>Name</th><th>Default (approx)</th><th>Where</th></tr></thead>
+        <tbody>
+            <tr><td><code>bg</code></td><td>35</td><td>Clear color</td></tr>
+            <tr><td><code>text</code></td><td>230</td><td>Buffer text</td></tr>
+            <tr><td><code>selection</code></td><td>64, 102, 158</td><td>Selection highlight</td></tr>
+            <tr><td><code>caret</code></td><td>230</td><td>Active caret</td></tr>
+            <tr><td><code>caret_inactive</code></td><td>115</td><td>Extra carets while the primary is blinked off</td></tr>
+            <tr><td><code>gutter</code></td><td>128</td><td>Line numbers</td></tr>
+            <tr><td><code>gutter_current</code></td><td>204</td><td>Current line number in the focused pane</td></tr>
+            <tr><td><code>divider</code></td><td>115, 115, 122</td><td>Pane split</td></tr>
+            <tr><td><code>brace_guide</code></td><td>102, 102, 112</td><td>Brace guideline</td></tr>
+            <tr><td><code>status_bg</code></td><td>56</td><td>Status bar</td></tr>
+            <tr><td><code>status_text</code></td><td>191</td><td>Status text</td></tr>
+            <tr><td><code>overlay_bg</code></td><td>41, 41, 46</td><td>Find / switcher</td></tr>
+            <tr><td><code>overlay_label</code></td><td>178, 204, 242</td><td>“Find:” / “Command:” and picker labels</td></tr>
+            <tr><td><code>overlay_list</code></td><td>178</td><td>Switcher rows</td></tr>
+            <tr><td><code>overlay_sel_fg</code></td><td>242</td><td>Selected overlay row</td></tr>
+            <tr><td><code>overlay_sel_bg</code></td><td>64, 102, 158</td><td>Selected overlay row fill</td></tr>
+            <tr><td><code>overlay_border_color</code></td><td>102, 102, 115</td><td>Overlay and picker borders</td></tr>
+            <tr><td><code>current_line</code></td><td>55, 55, 58</td><td>Current line highlight in the focused pane</td></tr>
+            <tr><td><code>keyword</code></td><td>87, 156, 214</td><td>Lexer keywords</td></tr>
+            <tr><td><code>comment</code></td><td>107, 153, 84</td><td>Comments</td></tr>
+            <tr><td><code>string</code></td><td>207, 145, 120</td><td>String literals</td></tr>
+            <tr><td><code>number</code></td><td>181, 207, 168</td><td>Numbers</td></tr>
+            <tr><td><code>operator</code></td><td>212, 212, 170</td><td>Operators</td></tr>
+            <tr><td><code>directive</code></td><td>199, 138, 230</td><td>Directives</td></tr>
+            <tr><td><code>function</code></td><td>220, 220, 170</td><td>Function names; also already-open files in the picker</td></tr>
+            <tr><td><code>type</code></td><td>78, 201, 176</td><td>Types</td></tr>
+            <tr><td><code>ime_preview</code></td><td>178, 217, 255</td><td>IME composition</td></tr>
+            <tr><td><code>tofu</code></td><td>140</td><td>Missing glyph</td></tr>
+        </tbody>
+    </table>
+
+    <p class="footer">Window size is not a setting yet (always 1280×720 at create).</p>
+</main>
+</div>
+<script src="js/nav.js"></script>
+</body>
+</html>

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Lua API — NOE</title>
+    <link rel="icon" href="res/noe.png" type="image/png">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar">
+    <p class="brand"><img class="brand-mark" src="res/noe.png" width="32" height="32" alt="">NOE</p>
+    <p class="brand-sub">Nico’s Own Editor</p>
+    <nav>
+        <h3>Guide</h3>
+        <a href="index.html">Overview</a>
+        <a href="lua.html">Lua API</a>
+        <a href="settings.html">Settings</a>
+        <a href="commands.html">Commands &amp; keys</a>
+        <a href="examples.html">Examples</a>
+    </nav>
+</aside>
+<main class="content">
+    <h1>Lua API</h1>
+    <p class="lead">Everything hangs off the global <code>noe</code> table. Lua never sees an editor pointer — only strings, numbers, and bools.</p>
+
+    <h2>Lifecycle</h2>
+    <ol>
+        <li>Odin registers default commands and keys.</li>
+        <li>The editor starts, then <code>script_init</code> creates a Lua 5.4 VM.</li>
+        <li><code>package.path</code> is prepended with the config dir (<code>?.lua</code> and <code>?/init.lua</code>).</li>
+        <li><code>init.lua</code> is loaded if it exists.</li>
+        <li><code>lex\*.lex</code> files in the same config tree are loaded for highlighting.</li>
+        <li>Untitled buffers pick up <code>newline</code> / <code>split_t</code> from settings.</li>
+    </ol>
+    <p><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> resets settings to defaults, restores the default keymap, drops Lua commands/hooks/status, clears <code>require</code>’s registry cache, and re-runs <code>init.lua</code>. Font size and path rebuild the atlas on the next frame.</p>
+
+    <h2 id="set"><span class="sig">noe.set(name, ...)</span></h2>
+    <p>Write a setting. Colors take one gray <code>0–255</code> or three RGB values. Unknown names raise <code>unknown setting</code>.</p>
+<pre><code>noe.set("tab_width", 4)
+noe.set("bg", 35)
+noe.set("selection", 64, 102, 158)
+noe.set("use_tabs", true)
+noe.set("newline", "lf")  -- or "crlf"</code></pre>
+    <p>Full list: <a href="settings.html">Settings</a>.</p>
+
+    <h2 id="get"><span class="sig">noe.get(name) → value(s)</span></h2>
+    <p>Read a setting back. Numbers, bools, and strings return one value. Colors return three integers <code>0–255</code>.</p>
+<pre><code>local w = noe.get("tab_width")
+local r, g, b = noe.get("bg")</code></pre>
+
+    <h2 id="bind"><span class="sig">noe.bind(chord, command)</span></h2>
+    <p>Map a chord to a command name (Odin or Lua). Chord is lowercase, <code>+</code>-separated: <code>ctrl</code>, <code>shift</code>, <code>alt</code>, then a key. A space starts a <strong>window sequence</strong>: the second token is the key after <code>window_prefix</code> (Ctrl+W).</p>
+<pre><code>noe.bind("ctrl+s", "file_save")
+noe.bind("ctrl+shift+r", "reload_config")
+noe.bind("alt+up", "line_up")
+noe.bind("f5", "file_save")
+noe.bind("ctrl+-", "dedent")
+noe.bind("ctrl+w", "window_prefix")
+noe.bind("ctrl+w h", "view_left")
+noe.bind("ctrl+w l", "view_right")</code></pre>
+    <p>Keys: <code>a–z</code>, <code>0–9</code>, <code>f1–f12</code>, <code>left</code> / <code>right</code> / <code>up</code> / <code>down</code>, <code>enter</code>, <code>backspace</code>, <code>escape</code> / <code>esc</code>, <code>tab</code>, <code>home</code>, <code>end</code>, <code>delete</code>, <code>page_up</code>, <code>page_down</code>, <code>space</code>, <code>insert</code>, <code>backslash</code>, and punctuation <code>-</code> <code>=</code> <code>,</code> <code>.</code> <code>/</code> <code>;</code> <code>'</code> <code>[</code> <code>]</code> <code>`</code> (also <code>minus</code>, <code>equal</code>, <code>semicolon</code>, <code>apostrophe</code>, <code>grave</code>, …).</p>
+    <div class="callout warn">
+        <code>ctrl++</code> does not parse (split on <code>+</code>). Use <code>ctrl+=</code> or <code>ctrl+equal</code>.
+        Bind letters and digits with a modifier; a bare <code>1</code> still inserts <code>1</code> via <code>WM_CHAR</code>.
+        Use a space for Ctrl+W sequences (<code>ctrl+w h</code>), not <code>ctrl+w+h</code>.
+    </div>
+
+    <h2 id="bind_window"><span class="sig">noe.bind_window(chord, command)</span></h2>
+    <p>Same as <code>noe.bind("ctrl+w " .. chord, command)</code>. The chord is only the second key (<code>"h"</code>, <code>"left"</code>, <code>"q"</code>).</p>
+<pre><code>noe.bind_window("h", "view_left")
+noe.bind_window("q", "buffer_close")</code></pre>
+
+    <h2 id="unbind"><span class="sig">noe.unbind(chord)</span></h2>
+    <p>Remove a chord. A space unbinds a window-sequence key. Defaults come back on a full config reload.</p>
+<pre><code>noe.unbind("ctrl+n")
+noe.unbind("ctrl+w h")</code></pre>
+
+    <h2 id="unbind_window"><span class="sig">noe.unbind_window(chord)</span></h2>
+    <p>Remove a second-key window bind.</p>
+<pre><code>noe.unbind_window("h")</code></pre>
+
+    <h2 id="command"><span class="sig">noe.command(name, fn)</span></h2>
+    <p>Register a Lua function as a command. <code>fn</code> takes no arguments. Keybinds look up Lua names first, then Odin.</p>
+<pre><code>noe.command("hello", function()
+    print("hello from lua")
+end)
+noe.bind("ctrl+'", "hello")</code></pre>
+
+    <h2 id="run"><span class="sig">noe.run(name)</span></h2>
+    <p>Call a command from Lua. <strong>Odin first</strong>, then Lua. That lets a Lua wrapper keep the original:</p>
+<pre><code>noe.command("file_save", function()
+    print("saving")
+    noe.run("file_save")  -- Odin's save, not this function
+end)</code></pre>
+    <p>Call other Lua functions directly (<code>hello()</code>), not through <code>noe.run</code>, unless they only exist as Odin names.</p>
+
+    <h2 id="hook"><span class="sig">noe.hook(kind, fn)</span></h2>
+    <p><code>kind</code> is <code>"save"</code>, <code>"open"</code>, or <code>"change"</code>. <code>fn</code> receives the buffer path (may be empty for untitled). Multiple hooks per kind stack.</p>
+    <ul>
+        <li><code>save</code> — after a successful write</li>
+        <li><code>open</code> — after a file is loaded</li>
+        <li><code>change</code> — when an edit group ends (can fire every keystroke; keep it cheap)</li>
+    </ul>
+<pre><code>noe.hook("save", function(path)
+    print("saved", path)
+end)</code></pre>
+
+    <h2 id="status"><span class="sig">noe.status(fn) → left, right</span></h2>
+    <p>Replace the status line. Return two strings. Called every redraw — do not allocate heavily. If the function errors, the built-in line is used.</p>
+<pre><code>noe.status(function()
+    return "NOE", tostring(noe.get("tab_width"))
+end)</code></pre>
+
+    <h2 id="require">require</h2>
+    <p>Standard Lua <code>require</code>. Modules live next to <code>init.lua</code>. Reload clears the real <code>_LOADED</code> cache so <code>theme.lua</code> is read again.</p>
+<pre><code>-- %APPDATA%\noe\theme.lua
+noe.set("bg", 20)
+
+-- init.lua
+require("theme")</code></pre>
+
+    <h2>Errors</h2>
+    <p>Load/runtime errors print to the terminal as <code>Lua: ...</code>. A failed <code>init.lua</code> still leaves the default keymap, including reload. Save the file, then <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>.</p>
+
+    <p class="footer">Lua 5.4 · config in OS AppData / <code>.config</code></p>
+</main>
+</div>
+<script src="js/nav.js"></script>
+</body>
+</html>

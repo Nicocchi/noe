@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Commands — NOE</title>
+    <link rel="icon" href="res/noe.png" type="image/png">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar">
+    <p class="brand"><img class="brand-mark" src="res/noe.png" width="32" height="32" alt="">NOE</p>
+    <p class="brand-sub">Nico’s Own Editor</p>
+    <nav>
+        <h3>Guide</h3>
+        <a href="index.html">Overview</a>
+        <a href="lua.html">Lua API</a>
+        <a href="settings.html">Settings</a>
+        <a href="commands.html">Commands &amp; keys</a>
+        <a href="examples.html">Examples</a>
+    </nav>
+</aside>
+<main class="content">
+    <h1>Commands &amp; keys</h1>
+    <p class="lead">Bind with <code>noe.bind("ctrl+s", "file_save")</code>. Lua commands with the same name shadow Odin on keypress; <code>noe.run</code> still hits Odin first.</p>
+    <input class="filter" id="filter" type="search" placeholder="Filter commands or keys…">
+
+    <h2>Default keymap</h2>
+    <table class="filterable">
+        <thead><tr><th>Chord</th><th>Command</th></tr></thead>
+        <tbody>
+            <tr><td><kbd>Left</kbd> / <kbd>Right</kbd> / <kbd>Up</kbd> / <kbd>Down</kbd></td><td><code>cursor_*</code></td></tr>
+            <tr><td><kbd>Shift</kbd>+arrows</td><td><code>select_*</code></td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>H</kbd> / <kbd>J</kbd> / <kbd>K</kbd> / <kbd>L</kbd></td><td><code>cursor_left</code> / <code>down</code> / <code>up</code> / <code>right</code></td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>Left</kbd> / <kbd>Right</kbd></td><td><code>cursor_word_*</code></td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Left</kbd> / <kbd>Right</kbd></td><td><code>select_word_*</code></td></tr>
+            <tr><td><kbd>Home</kbd> / <kbd>End</kbd></td><td><code>cursor_home</code> / <code>cursor_end</code></td></tr>
+            <tr><td><kbd>Shift</kbd>+<kbd>Home</kbd> / <kbd>End</kbd></td><td><code>select_home</code> / <code>select_end</code></td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>Home</kbd> / <kbd>End</kbd></td><td><code>cursor_doc_home</code> / <code>cursor_doc_end</code></td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Home</kbd> / <kbd>End</kbd></td><td><code>select_doc_home</code> / <code>select_doc_end</code></td></tr>
+            <tr><td><kbd>Page Up</kbd> / <kbd>Page Down</kbd></td><td><code>cursor_page_up</code> / <code>cursor_page_down</code></td></tr>
+            <tr><td><kbd>Shift</kbd>+Page</td><td><code>select_page_*</code></td></tr>
+            <tr><td><kbd>Backspace</kbd> / <kbd>Delete</kbd></td><td><code>delete_backward</code> / <code>delete_forward</code></td></tr>
+            <tr><td><kbd>Enter</kbd></td><td><code>insert_newline</code></td></tr>
+            <tr><td><kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd></td><td><code>indent</code> / <code>dedent</code></td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>A</kbd></td><td><code>select_all</code></td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td><td><code>add_next_match</code></td></tr>
+            <tr><td><kbd>Escape</kbd></td><td><code>carets_clear</code></td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td><code>undo</code></td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>Y</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></td><td><code>redo</code></td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>X</kbd> / <kbd>V</kbd></td><td><code>edit_copy</code> / <code>cut</code> / <code>paste</code></td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>O</kbd></td><td><code>file_open</code></td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>N</kbd></td><td><code>file_new</code></td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td><td><code>file_save</code></td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd></td><td><code>file_save_as</code></td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd></td><td><code>file_finder</code></td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>W</kbd> then <kbd>H</kbd> / <kbd>J</kbd> / <kbd>K</kbd> / <kbd>L</kbd></td><td><code>view_left</code> / <code>down</code> / <code>up</code> / <code>right</code></td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>W</kbd> then <kbd>W</kbd></td><td><code>view_next</code></td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>W</kbd> then <kbd>Q</kbd> or <kbd>C</kbd></td><td><code>buffer_close</code></td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>F</kbd></td><td><code>find</code></td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>P</kbd></td><td><code>buffer_switcher</code></td></tr>
+            <tr><td><kbd>Alt</kbd>+<kbd>Up</kbd> / <kbd>Down</kbd></td><td><code>line_up</code> / <code>line_down</code></td></tr>
+            <tr><td><kbd>Ctrl</kbd>+\</td><td><code>view_next</code> (clone pane)</td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>/</kbd></td><td><code>toggle_comment</code></td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd></td><td><code>reload_config</code></td></tr>
+        </tbody>
+    </table>
+
+    <h2>All built-in names</h2>
+    <table class="filterable">
+        <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+        <tbody>
+            <tr><td><code>cursor_left</code> … <code>cursor_down</code></td><td>Move primary caret, clear extras</td></tr>
+            <tr><td><code>select_left</code> … <code>select_down</code></td><td>Extend selection</td></tr>
+            <tr><td><code>cursor_word_left</code> / <code>right</code></td><td>Word motion (Ctrl+Left / Right)</td></tr>
+            <tr><td><code>select_word_left</code> / <code>right</code></td><td>Word select</td></tr>
+            <tr><td><code>cursor_home</code> / <code>end</code></td><td>Line start / end</td></tr>
+            <tr><td><code>select_home</code> / <code>end</code></td><td>Select to line start / end</td></tr>
+            <tr><td><code>cursor_doc_home</code> / <code>end</code></td><td>Buffer start / end</td></tr>
+            <tr><td><code>select_doc_home</code> / <code>end</code></td><td>Select to buffer start / end</td></tr>
+            <tr><td><code>cursor_page_up</code> / <code>down</code></td><td>Page jump</td></tr>
+            <tr><td><code>select_page_up</code> / <code>down</code></td><td>Select by page</td></tr>
+            <tr><td><code>delete_backward</code> / <code>delete_forward</code></td><td>Backspace / Delete (pair-aware if smart brackets)</td></tr>
+            <tr><td><code>insert_newline</code></td><td>Enter + smart indent</td></tr>
+            <tr><td><code>indent</code> / <code>dedent</code></td><td>Tab / Shift+Tab using <code>use_tabs</code></td></tr>
+            <tr><td><code>line_up</code> / <code>line_down</code></td><td>Swap the line (or selected lines) with the neighbor. Indent matches that line; one extra level when moving down through <code>{[(</code> or up through <code>}])</code></td></tr>
+            <tr><td><code>select_all</code></td><td>Whole buffer</td></tr>
+            <tr><td><code>add_next_match</code></td><td>Multi-cursor: next same range</td></tr>
+            <tr><td><code>carets_clear</code></td><td>Drop extra carets</td></tr>
+            <tr><td><code>undo</code> / <code>redo</code></td><td>Journal; restores carets</td></tr>
+            <tr><td><code>edit_copy</code> / <code>cut</code> / <code>paste</code></td><td>Clipboard UTF-16</td></tr>
+            <tr><td><code>file_open</code> / <code>file_save</code> / <code>file_save_as</code></td><td>Win32 dialogs</td></tr>
+            <tr><td><code>file_new</code></td><td>New-file overlay: browse the project, name a file, <kbd>Ctrl</kbd>+<kbd>R</kbd> rename, <kbd>Ctrl</kbd>+<kbd>D</kbd> delete</td></tr>
+            <tr><td><code>file_finder</code></td><td>Project file picker with fuzzy filter and preview; already-open paths use the <code>function</code> color</td></tr>
+            <tr><td><code>window_prefix</code></td><td>Start a Ctrl+W sequence; next key is a pane command</td></tr>
+            <tr><td><code>buffer_close</code></td><td>Close the active buffer. Unsaved files prompt Save / Discard / Cancel. The last buffer becomes untitled. Bound as Ctrl+W Q / C</td></tr>
+            <tr><td><code>find</code></td><td>Find overlay</td></tr>
+            <tr><td><code>buffer_switcher</code></td><td>Open-buffer overlay; names are paths from the project root. A number jumps to that line</td></tr>
+            <tr><td><code>view_next</code></td><td>Second pane on the same buffer</td></tr>
+            <tr><td><code>view_left</code> / <code>view_right</code> / <code>view_up</code> / <code>view_down</code></td><td>Focus pane. Up/down are no-ops until vertical splits exist</td></tr>
+            <tr><td><code>toggle_comment</code></td><td>Toggle the lexer line-comment mark on the current line or selection</td></tr>
+            <tr><td><code>reload_config</code></td><td>Reload <code>*.lex</code> files and re-highlight open buffers</td></tr>
+        </tbody>
+    </table>
+
+    <div class="callout">
+        Mouse: click to focus a pane, drag to select (edge pan), drag the split (resize cursor). Overlay steals keys until Escape or click-outside.
+    </div>
+
+    <p class="footer">No vertical split commands yet.</p>
+</main>
+</div>
+<script src="js/nav.js"></script>
+</body>
+</html>

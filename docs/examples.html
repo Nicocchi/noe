@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Examples — NOE</title>
+    <link rel="icon" href="res/noe.png" type="image/png">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="layout">
+<aside class="sidebar">
+    <p class="brand"><img class="brand-mark" src="res/noe.png" width="32" height="32" alt="">NOE</p>
+    <p class="brand-sub">Nico’s Own Editor</p>
+    <nav>
+        <h3>Guide</h3>
+        <a href="index.html">Overview</a>
+        <a href="lua.html">Lua API</a>
+        <a href="settings.html">Settings</a>
+        <a href="commands.html">Commands &amp; keys</a>
+        <a href="examples.html">Examples</a>
+    </nav>
+</aside>
+<main class="content">
+    <h1>Examples</h1>
+    <p class="lead">Drop Lua in <code>%APPDATA%\noe\</code> (<code>init.lua</code>, optional <code>themes\</code>). Highlighters go in <code>%APPDATA%\noe\lex\</code>. Save, then <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>. A release zip is only <code>noe.exe</code> + <code>lua54.dll</code>; this folder is created on first run.</p>
+
+    <h2>Minimal <code>init.lua</code></h2>
+<pre><code>noe.set("font_size", 18)
+noe.set("tab_width", 4)
+noe.set("use_tabs", true)
+noe.set("bg", 35)
+noe.set("text", 230)
+</code></pre>
+
+    <h2>Split theme into <code>theme.lua</code></h2>
+    <p><code>theme.lua</code> next to <code>init.lua</code>:</p>
+<pre><code>noe.set("bg", 20)
+noe.set("text", 230)
+noe.set("selection", 64, 102, 158)
+noe.set("caret", 230)
+noe.set("gutter", 128)
+noe.set("gutter_current", 204)
+noe.set("divider", 115, 115, 122)
+noe.set("status_bg", 56)
+noe.set("status_text", 191)
+noe.set("overlay_bg", 41, 41, 46)
+noe.set("overlay_label", 178, 204, 242)
+</code></pre>
+    <p><code>init.lua</code>:</p>
+<pre><code>require("theme")
+
+noe.set("text_pad_x", 8)
+noe.set("text_pad_y", 8)
+noe.set("pad_y", 0)
+</code></pre>
+
+    <h2>Custom command + bind</h2>
+<pre><code>noe.command("hello", function()
+    print("hello from lua")
+end)
+noe.bind("ctrl+'", "hello")
+</code></pre>
+    <p><code>print</code> shows in a console. <code>./build.sh</code> links a windowed exe, so run with <code>odin run src</code> if you want that output.</p>
+
+    <h2>Wrap save</h2>
+<pre><code>noe.command("file_save", function()
+    print("saving")
+    noe.run("file_save")
+end)
+</code></pre>
+    <p><code>noe.run</code> calls the Odin command, so this does not recurse. <kbd>Ctrl</kbd>+<kbd>S</kbd> still named <code>file_save</code> hits the Lua wrapper first.</p>
+
+    <h2>Hooks</h2>
+<pre><code>noe.hook("save", function(path)
+    print("saved", path)
+end)
+
+noe.hook("open", function(path)
+    print("opened", path)
+end)
+
+-- noisier: every edit group
+-- noe.hook("change", function(path) end)
+</code></pre>
+
+    <h2>Status line</h2>
+<pre><code>noe.status(function()
+    local tab = noe.get("tab_width")
+    return "NOE", "tab " .. tostring(tab)
+end)
+</code></pre>
+
+    <h2>Font + fallback</h2>
+<pre><code>noe.set("font_size", 22)
+noe.set("font_path", "C:/Windows/Fonts/CascadiaCode.ttf")
+-- noe.set("font_fallback", "C:/Windows/Fonts/msyh.ttc")
+</code></pre>
+    <p>Takes effect on reload. A missing primary path keeps the last good font.</p>
+
+    <h2>Spaces, CRLF, no pairing</h2>
+<pre><code>noe.set("use_tabs", false)
+noe.set("tab_width", 2)
+noe.set("newline", "crlf")
+noe.set("smart_brackets", false)
+</code></pre>
+
+    <h2>Rebind open, extra panes</h2>
+    <p>Default <kbd>Ctrl</kbd>+<kbd>N</kbd> is <code>file_new</code>. This gives that chord to open instead:</p>
+<pre><code>noe.unbind("ctrl+n")
+noe.bind("ctrl+n", "file_open")
+noe.bind("ctrl+w", "window_prefix")
+noe.bind("ctrl+w h", "view_left")
+noe.bind("ctrl+w l", "view_right")
+noe.bind("ctrl+w j", "view_down")
+noe.bind("ctrl+w k", "view_up")
+noe.bind("f5", "file_save")
+</code></pre>
+
+    <h2>Full-ish skeleton</h2>
+<pre><code>require("theme")
+
+noe.set("tab_width", 4)
+noe.set("blink_ms", 530)
+noe.set("pad_x", 12)
+noe.set("pad_y", 0)
+noe.set("text_pad_x", 8)
+noe.set("text_pad_y", 8)
+noe.set("split_gap", 6)
+noe.set("split_t", 0.5)
+noe.set("use_tabs", true)
+noe.set("newline", "lf")
+noe.set("smart_brackets", true)
+noe.set("font_size", 18)
+noe.set("show_gutter", true)
+noe.set("show_status", true)
+noe.set("show_brace_header", true)
+noe.set("show_brace_guides", true)
+noe.set("brace_guide", 102, 102, 112)
+noe.set("find_case_sensitive", true)
+noe.set("scroll_margin", 1)
+
+noe.status(function()
+    return "NOE", tostring(noe.get("tab_width"))
+end)
+
+noe.hook("save", function(path)
+    print("saved", path)
+end)
+
+noe.bind("ctrl+shift+r", "reload_config")
+</code></pre>
+    <p><code>reload_config</code> is already on <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> in the default keymap; the bind is optional.</p>
+
+    <p class="footer">See <a href="lua.html">Lua API</a> and <a href="settings.html">Settings</a> for every key.</p>
+</main>
+</div>
+<script src="js/nav.js"></script>
+</body>
+</html>
